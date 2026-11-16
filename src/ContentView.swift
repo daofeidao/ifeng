@@ -156,20 +156,21 @@ struct ContentView: View {
     }
 
     private func tabButton(_ idx: Int, _ title: String) -> some View {
-        // 不用 Button：按钮点击后会拿到键盘焦点，macOS 会画一圈蓝色焦点框。
-        // 改成纯视图 + onTapGesture，永远不会有焦点圈。
-        VStack(spacing: 3) {
-            Text(title)
-                .font(.system(size: 11, weight: tab == idx ? .semibold : .regular))
-                .foregroundColor(tab == idx ? Color.accentColor : Color.secondary)
-            Rectangle()
-                .fill(tab == idx ? Color.accentColor : Color.clear)
-                .frame(height: 1.5)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 3)
-        .contentShape(Rectangle())
-        .onTapGesture { selectTab(idx) }
+        // 选中态 = 蓝色圆角背景（样式沿用最初的版本）。
+        // 但不用 Button 实现：按钮点击后会拿到键盘焦点，macOS 会画一圈蓝色焦点框，
+        // 且面板打开时首个按钮自动获得焦点 —— 这就是之前「定速」上那个去不掉的框。
+        // 改成纯视图 + onTapGesture，样式归样式，焦点圈彻底消失。
+        Text(title)
+            .font(.system(size: 11, weight: tab == idx ? .semibold : .regular))
+            .foregroundColor(tab == idx ? Color.white : Color.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(tab == idx ? Color.accentColor : Color.clear)
+                )
+            .contentShape(Rectangle())
+            .onTapGesture { selectTab(idx) }
     }
 
     private func selectTab(_ idx: Int) {
