@@ -120,6 +120,8 @@ final class FanModel: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var autostartEnabled = Autostart.isEnabled
     @Published private(set) var lastUpdate = Date.distantPast
+    /// 最近一次读到的有效转速：偶尔 SMC 读失败时用它兜底，避免状态栏闪成 "--"
+    private var lastKnownRPM: Double = 0
     /// 最近一次真正写入 SMC 的目标转速（平滑过渡时会在目标与当前之间移动）
     @Published private(set) var writtenRPM: Double = -1
     /// 网速镜像值（让菜单栏与面板随网速刷新）
@@ -261,7 +263,8 @@ final class FanModel: ObservableObject {
     }
 
     var rpmBarText: String {
-        primaryRPM > 0 ? String(format: "%4d", Int(primaryRPM.rounded())) : "  --"
+        let v = primaryRPM > 1 ? primaryRPM : lastKnownRPM
+        return v > 1 ? String(format: "%4d", Int(v.rounded())) : "  --"
     }
 
     var targetDeviation: Double? {
@@ -308,6 +311,7 @@ final class FanModel: ObservableObject {
                 }
                 self.helperReady = st.ok && Helper.helperReady
                 self.fans = st.fans
+                if let f = st.fans.first, f.ac > 1 { self.lastKnownRPM = f.ac }
                 self.temps = st.temps
                 self.lastError = st.ok
                     ? (Helper.helperReady ? nil : "尚未启用风扇写入，请在「设置」里点「一键启用」")
