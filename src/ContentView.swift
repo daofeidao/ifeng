@@ -12,6 +12,16 @@ struct ContentView: View {
     @State private var showAllTemps = true
     @State private var dragID: UUID? = nil
 
+    /// 面板高度按页签收紧：内容矮的页不留「下巴」
+    private var panelHeight: CGFloat {
+        switch tab {
+        case 0:  return showAllTemps ? 620 : 500   // 定速：传感器全显时最高
+        case 1:  return 620                         // 曲线：图表 + 节点列表
+        case 2:  return 505                         // 控温
+        default: return 480                         // 我的
+        }
+    }
+
     /// 启动时按持久化的模式选择初始页签
     private static func initialTab(for mode: FanMode) -> Int {
         switch mode {
@@ -39,7 +49,8 @@ struct ContentView: View {
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .frame(width: 372, height: 620)
+        .frame(width: 372, height: panelHeight)
+        .animation(.easeOut(duration: 0.15), value: tab)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             if !tabInitialized {
