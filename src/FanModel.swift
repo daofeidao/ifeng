@@ -210,15 +210,15 @@ final class FanModel: ObservableObject {
 
     var isForcing: Bool { fans.contains { $0.md != 0 } }
 
-    /// 菜单栏文本：温度必显，转速 / 网速可选
+    /// 菜单栏文本：网速在前，其后温度，最后转速（均可单独关闭）
     var menuBarText: String {
         var parts: [String] = []
+        if menuShowNet {
+            parts.append("↑\(NetMonitor.format(netUp)) ↓\(NetMonitor.format(netDown))")
+        }
         parts.append(controlTemp.map { String(format: "%.0f°", $0) } ?? "--°")
         if menuShowRPM, primaryRPM > 0 {
             parts.append("\(Int(primaryRPM.rounded()))")
-        }
-        if menuShowNet {
-            parts.append("↑\(NetMonitor.format(netUp)) ↓\(NetMonitor.format(netDown))")
         }
         return parts.joined(separator: " ")
     }
