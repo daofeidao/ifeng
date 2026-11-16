@@ -856,14 +856,15 @@ struct ContentView: View {
             Button("恢复系统自动") { model.restoreAuto() }
                 .controlSize(.small)
             Spacer()
-            Button {
-                model.quitSafely()
-            } label: {
-                Text("退出")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.red)
-            }
-            .controlSize(.small)
+            // 退出做成醒目的红底白字大按钮（同样不用 Button，避免焦点圈）
+            Text("退 出")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 7)
+                .background(Capsule().fill(Color.red))
+                .contentShape(Capsule())
+                .onTapGesture { model.quitSafely() }
         }
 
         Text("退出或注销时会把风扇交还系统固件。若被强制结束进程，风扇会停在最后转速，重新打开后点「恢复系统自动」即可。")
