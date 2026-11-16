@@ -31,6 +31,22 @@ enum FanMode: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - 网速单位
+
+enum NetUnit: String, CaseIterable, Identifiable {
+    case auto   // K / M 自适应
+    case mbs    // 固定 MB/s
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .auto: return "自动"
+        case .mbs:  return "MB/s"
+        }
+    }
+}
+
 // MARK: - 曲线节点
 
 struct CurvePoint: Codable, Identifiable, Equatable {
@@ -75,6 +91,11 @@ final class FanModel: ObservableObject {
     /// 状态栏显示网速（默认打开）
     @Published var menuShowNet: Bool = true {
         didSet { defaults.set(menuShowNet, forKey: Keys.menuShowNet) }
+    }
+
+    /// 网速单位：自动（K/M 自适应）或固定 MB/s
+    @Published var netUnit: NetUnit = .auto {
+        didSet { defaults.set(netUnit.rawValue, forKey: Keys.netUnit) }
     }
 
     /// 转速平滑过渡（开关 + 速率设定 + 分步过渡）
@@ -126,6 +147,7 @@ final class FanModel: ObservableObject {
         static let curve         = "ifeng.curve"
         static let menuShowRPM   = "ifeng.menuShowRPM"
         static let menuShowNet   = "ifeng.menuShowNet"
+        static let netUnit       = "ifeng.netUnit"
         static let smoothEnabled = "ifeng.smoothEnabled"
         static let smoothRate    = "ifeng.smoothRate"
     }
@@ -139,6 +161,7 @@ final class FanModel: ObservableObject {
         if d.object(forKey: Keys.manualRPM) != nil { manualRPM = d.double(forKey: Keys.manualRPM) }
         if d.object(forKey: Keys.menuShowRPM) != nil { menuShowRPM = d.bool(forKey: Keys.menuShowRPM) }
         if d.object(forKey: Keys.menuShowNet) != nil { menuShowNet = d.bool(forKey: Keys.menuShowNet) }
+        if let raw = d.string(forKey: Keys.netUnit), let u = NetUnit(rawValue: raw) { netUnit = u }
         if d.object(forKey: Keys.smoothEnabled) != nil { smoothEnabled = d.bool(forKey: Keys.smoothEnabled) }
         if d.object(forKey: Keys.smoothRate) != nil { smoothRate = d.double(forKey: Keys.smoothRate) }
         loadCurve()
@@ -212,17 +235,23 @@ final class FanModel: ObservableObject {
 
     /// 网速单独成串，方便放到风扇图标左侧
     var netText: String {
-        "↑\(NetMonitor.format(netUp)) ↓\(NetMonitor.format(netDown))"
+        "↑\(netValueText(netUp)) ↓\(netValueText(netDown))"
     }
 
-    /// 图标右侧的文本（温度 + 转速）
-    var barTextAfterIcon: String {
-        var parts: [String] = []
-        parts.append(controlTemp.map { String(format: "%.0f°", $0) } ?? "--°")
-        if menuShowRPM, primaryRPM > 0 {
-            parts.append("\(Int(primaryRPM.rounded()))")
+    private func netValueText(_ v: Double) -> String {
+        switch netUnit {
+        case .auto: return NetMonitor.format(v)
+        case .mbs:  return String(format: "%.1fM/s", v / 1_048_576.0)
         }
-        return parts.joined(separator: " ")
+    }
+
+    /// 图标右侧：温度与转速分开，便于各自固定宽度、互不挤动
+    var tempBarText: String {
+        controlTemp.map { String(format: "%.0f°", $0) } ?? "--°"
+    }
+
+    var rpmBarText: String {
+        primaryRPM > 0 ? "\(Int(primaryRPM.rounded()))" : "--"
     }
 
     var targetDeviation: Double? {

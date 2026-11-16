@@ -11,17 +11,29 @@ struct IFengApp: App {
         MenuBarExtra {
             ContentView(model: model, updater: model.updater)
         } label: {
-            HStack(spacing: 4) {
-                // 网速放在风扇图标左侧
+            // 顺序：网速 → 风扇图标 → 温度 → 转速
+            // 每一段都固定宽度，否则数值变化时整排会左右晃
+            HStack(spacing: 3) {
                 if model.menuShowNet {
                     Text(model.netText)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 10.5, weight: .medium))
                         .monospacedDigit()
+                        .frame(width: 104, alignment: .trailing)
+                        .lineLimit(1)
                 }
                 Image(systemName: "fanblades.fill")
-                Text(model.barTextAfterIcon)
+                Text(model.tempBarText)
                     .font(.system(size: 11, weight: .medium))
                     .monospacedDigit()
+                    .frame(width: 30, alignment: .trailing)
+                    .lineLimit(1)
+                if model.menuShowRPM {
+                    Text(model.rpmBarText)
+                        .font(.system(size: 11, weight: .medium))
+                        .monospacedDigit()
+                        .frame(width: 32, alignment: .trailing)
+                        .lineLimit(1)
+                }
             }
         }
         .menuBarExtraStyle(.window)

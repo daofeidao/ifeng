@@ -711,7 +711,7 @@ struct ContentView: View {
                                  set: { model.menuShowNet = $0 })) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("网络速率").font(.system(size: 10))
-                    Text("↑ 上传　↓ 下载，单位自适应 K / M")
+                    Text("显示在风扇图标左侧，宽度固定不抖动")
                         .font(.system(size: 9))
                         .foregroundColor(.secondary)
                 }
@@ -719,11 +719,27 @@ struct ContentView: View {
             .toggleStyle(.switch)
             .controlSize(.mini)
 
+            HStack(spacing: 6) {
+                Text("单位")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                Picker("", selection: Binding(get: { model.netUnit },
+                                              set: { model.netUnit = $0 })) {
+                    ForEach(NetUnit.allCases) { u in
+                        Text(u.title).tag(u)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.mini)
+                .frame(width: 116)
+                Spacer()
+            }
+
             HStack(spacing: 4) {
                 Text("当前")
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
-                Text("↑ \(NetMonitor.format(model.netUp))  ↓ \(NetMonitor.format(model.netDown))")
+                Text(model.netText)
                     .font(.system(size: 9, weight: .medium))
                     .monospacedDigit()
                 Spacer()
