@@ -12,8 +12,14 @@ struct IFengApp: App {
             ContentView(model: model, updater: model.updater)
         } label: {
             HStack(spacing: 4) {
+                // 网速放在风扇图标左侧
+                if model.menuShowNet {
+                    Text(model.netText)
+                        .font(.system(size: 11, weight: .medium))
+                        .monospacedDigit()
+                }
                 Image(systemName: "fanblades.fill")
-                Text(model.menuBarText)
+                Text(model.barTextAfterIcon)
                     .font(.system(size: 11, weight: .medium))
                     .monospacedDigit()
             }
