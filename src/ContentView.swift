@@ -156,23 +156,20 @@ struct ContentView: View {
     }
 
     private func tabButton(_ idx: Int, _ title: String) -> some View {
-        Button {
-            selectTab(idx)
-        } label: {
-            VStack(spacing: 3) {
-                Text(title)
-                    .font(.system(size: 11, weight: tab == idx ? .semibold : .regular))
-                    .foregroundColor(tab == idx ? Color.accentColor : Color.secondary)
-                // 选中态只保留一条细下划线，不再用蓝色底框
-                Rectangle()
-                    .fill(tab == idx ? Color.accentColor : Color.clear)
-                    .frame(height: 1.5)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 3)
-            .contentShape(Rectangle())
+        // 不用 Button：按钮点击后会拿到键盘焦点，macOS 会画一圈蓝色焦点框。
+        // 改成纯视图 + onTapGesture，永远不会有焦点圈。
+        VStack(spacing: 3) {
+            Text(title)
+                .font(.system(size: 11, weight: tab == idx ? .semibold : .regular))
+                .foregroundColor(tab == idx ? Color.accentColor : Color.secondary)
+            Rectangle()
+                .fill(tab == idx ? Color.accentColor : Color.clear)
+                .frame(height: 1.5)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .onTapGesture { selectTab(idx) }
     }
 
     private func selectTab(_ idx: Int) {
