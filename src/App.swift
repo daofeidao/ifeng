@@ -36,6 +36,7 @@ struct IFengApp: App {
                     .frame(width: model.menuShowRPM ? 32 : 0, alignment: .trailing)
                     .lineLimit(1)
             }
+            .frame(width: model.barWidth, alignment: .trailing)
         }
         .menuBarExtraStyle(.window)
     }

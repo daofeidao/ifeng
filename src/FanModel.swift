@@ -254,6 +254,15 @@ final class FanModel: ObservableObject {
         primaryRPM > 0 ? "\(Int(primaryRPM.rounded()))" : "--"
     }
 
+    /// 菜单栏整条的宽度（显式指定，否则 NSStatusItem 会按「图标+文字」估算，
+    /// 把我们用 frame 撑开的各段居中裁掉）
+    var barWidth: CGFloat {
+        var w: CGFloat = 16 + 30          // 图标 + 温度
+        if menuShowNet { w += 104 + 3 }   // 网速 + 间距
+        if menuShowRPM { w += 32 + 3 }    // 转速 + 间距
+        return w
+    }
+
     var targetDeviation: Double? {
         guard let t = controlTemp else { return nil }
         return t - targetTemp
