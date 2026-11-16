@@ -512,25 +512,33 @@ struct ContentView: View {
                           rpm: rpmAt(loc.y, size.height, r))
     }
 
+    /// 曲线图内边距：圆点半径 9pt（拖动时 18pt），不加内边距的话
+    /// 最高/最低转速与边缘温度的圆点会被图框裁掉一半
+    private static let graphInset: CGFloat = 12
+
     private func tempAt(_ x: CGFloat, _ w: CGFloat) -> Double {
-        let ratio = Double(min(max(x / max(w, 1), 0), 1))
+        let inner = max(1, w - Self.graphInset * 2)
+        let ratio = Double(min(max((x - Self.graphInset) / inner, 0), 1))
         return 30.0 + ratio * 75.0
     }
 
     private func rpmAt(_ y: CGFloat, _ h: CGFloat, _ r: ClosedRange<Double>) -> Double {
-        let ratio = 1.0 - Double(min(max(y / max(h, 1), 0), 1))
+        let inner = max(1, h - Self.graphInset * 2)
+        let ratio = 1.0 - Double(min(max((y - Self.graphInset) / inner, 0), 1))
         return r.lowerBound + ratio * (r.upperBound - r.lowerBound)
     }
 
     private func px(_ temp: Double, _ w: CGFloat) -> CGFloat {
+        let inner = max(1, w - Self.graphInset * 2)
         let v = (min(max(temp, 30), 105) - 30) / 75.0
-        return CGFloat(v) * w
+        return Self.graphInset + CGFloat(v) * inner
     }
 
     private func py(_ rpm: Double, _ h: CGFloat, _ r: ClosedRange<Double>) -> CGFloat {
+        let inner = max(1, h - Self.graphInset * 2)
         let span = max(1.0, r.upperBound - r.lowerBound)
         let v = (min(max(rpm, r.lowerBound), r.upperBound) - r.lowerBound) / span
-        return h - CGFloat(v) * h
+        return Self.graphInset + (1 - CGFloat(v)) * inner
     }
 
     // MARK: - 控温
