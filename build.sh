@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 APP="build/风扇控制.app"
 BIN="iFeng"
 ARCH="$(uname -m)"
-VERSION="1.2.1"
+VERSION="1.2.2"
 UNIVERSAL="${UNIVERSAL:-0}"
 SOURCES="src/App.swift src/Fanctl.swift src/FanModel.swift src/ContentView.swift src/Updater.swift src/NetMonitor.swift"
 

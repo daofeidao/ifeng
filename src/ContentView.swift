@@ -29,7 +29,10 @@ struct ContentView: View {
         }
         .frame(width: 360, height: 588)
         .background(Color(nsColor: .windowBackgroundColor))
-        .onAppear { syncSlider() }
+        .onAppear {
+            syncSlider()
+            updater.checkIfStale()
+        }
         .onChange(of: model.mode) { _ in syncSlider() }
         .onChange(of: model.fans.count) { _ in syncSlider() }
     }
@@ -652,6 +655,15 @@ struct ContentView: View {
                         .font(.system(size: 9))
                         .foregroundColor(updater.readyToInstall ? .green : .secondary)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    if let err = updater.lastError {
+                        Text(err)
+                            .font(.system(size: 9))
+                            .foregroundColor(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("打开下载页") { updater.openReleasePage() }
+                            .controlSize(.mini)
+                    }
 
                     if updater.readyToInstall {
                         HStack(spacing: 8) {

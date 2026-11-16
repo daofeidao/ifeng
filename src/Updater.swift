@@ -29,6 +29,7 @@ final class Updater: ObservableObject {
     @Published var downloading = false
     @Published var installing = false
     @Published var message = "尚未检查"
+    @Published var lastError: String?
     @Published var latest: ReleaseInfo?
     @Published var lastChecked: Date?
     @Published private(set) var stagedVersion: String?
@@ -104,11 +105,11 @@ final class Updater: ObservableObject {
 
         guard autoUpdate else { return }
 
-        // 启动 5 秒后静默检查一次，之后每 6 小时一次
+        // 启动 5 秒后静默检查一次，之后每小时一次
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             self?.check(silent: true)
         }
-        let t = Timer(timeInterval: 6 * 3600, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 3600, repeats: true) { [weak self] _ in
             self?.check(silent: true)
         }
         RunLoop.main.add(t, forMode: .common)
@@ -151,68 +152,131 @@ final class Updater: ObservableObject {
         guard !checking else { return }
         checking = true
         if !silent { message = "检查中…" }
+        lastError = nil
 
+        checkViaAPI { [weak self] info, apiError in
+            guard let self = self else { return }
+            if let info = info {
+                DispatchQueue.main.async { self.finish(info) }
+                return
+            }
+            // API 不可达（国内网络/限流很常见）时，退回 releases/latest 的重定向地址，
+            // 从最终 URL 里取 tag，再拼出下载链接 —— 不依赖 api.github.com。
+            self.checkViaRedirect { info2, redirectError in
+                DispatchQueue.main.async {
+                    if let info2 = info2 {
+                        self.finish(info2)
+                    } else {
+                        self.checking = false
+                        self.lastChecked = Date()
+                        let detail = [apiError, redirectError].compactMap { $0 }.joined(separator: "；")
+                        self.lastError = detail.isEmpty ? "未知原因" : detail
+                        self.message = "检查失败：\(self.lastError ?? "")"
+                    }
+                }
+            }
+        }
+    }
+
+    /// 面板每次打开时补一次：距上次检查超过 N 分钟才真正发请求
+    func checkIfStale(minutes: Double = 30) {
+        guard autoUpdate else { return }
+        if let t = lastChecked, Date().timeIntervalSince(t) < minutes * 60 { return }
+        check(silent: true)
+    }
+
+    private func finish(_ info: ReleaseInfo) {
+        checking = false
+        lastChecked = Date()
+        latest = info
+        lastError = nil
+
+        if Updater.compareVersion(info.version, currentVersion) > 0 {
+            if readyToInstall {
+                message = "新版本 \(info.version) 已下载，可点「重启并安装」"
+            } else if autoUpdate, !downloading {
+                message = "发现新版本 \(info.version)，开始后台下载…"
+                download(info)
+            } else {
+                message = "发现新版本 \(info.version)（当前 \(currentVersion)）"
+            }
+        } else {
+            message = "已是最新版本（\(currentVersion)）"
+        }
+    }
+
+    /// 通道一：GitHub API
+    private func checkViaAPI(_ done: @escaping (ReleaseInfo?, String?) -> Void) {
         guard let url = URL(string: "https://api.github.com/repos/\(Self.owner)/\(Self.repo)/releases/latest") else {
-            checking = false
-            message = "内部错误"
+            done(nil, "内部错误")
             return
         }
         var req = URLRequest(url: url)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.timeoutInterval = 15
+        req.timeoutInterval = 12
 
-        URLSession.shared.dataTask(with: req) { [weak self] data, _, error in
-            guard let self = self else { return }
-            var parsed: ReleaseInfo? = nil
-            var failText: String? = nil
-
+        URLSession.shared.dataTask(with: req) { data, resp, error in
             if let error = error {
-                failText = "网络错误：\(error.localizedDescription)"
-            } else if let data = data,
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                if let tag = obj["tag_name"] as? String {
-                    var info = ReleaseInfo(version: tag, notes: obj["body"] as? String ?? "")
-                    if let s = obj["html_url"] as? String { info.pageURL = URL(string: s) }
-                    if let assets = obj["assets"] as? [[String: Any]] {
-                        for a in assets {
-                            if let n = a["name"] as? String, n.hasSuffix(".zip"),
-                               let u = a["browser_download_url"] as? String,
-                               let url = URL(string: u) {
-                                info.assetURL = url
-                                break
-                            }
-                        }
-                    }
-                    parsed = info
-                } else {
-                    failText = "尚未发布任何版本"
-                }
-            } else {
-                failText = "无法解析服务器响应"
+                done(nil, "api.github.com 不可达（\(error.localizedDescription)）")
+                return
+            }
+            if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
+                done(nil, "api.github.com 返回 \(http.statusCode)")
+                return
+            }
+            guard let data = data,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let tag = obj["tag_name"] as? String else {
+                done(nil, "响应无法解析")
+                return
             }
 
-            DispatchQueue.main.async {
-                self.checking = false
-                self.lastChecked = Date()
-                guard let info = parsed else {
-                    if !silent { self.message = failText ?? "检查失败" }
-                    return
-                }
-                self.latest = info
-
-                if Updater.compareVersion(info.version, self.currentVersion) > 0 {
-                    if self.readyToInstall {
-                        self.message = "新版本 \(info.version) 已下载，可点「重启并安装」"
-                    } else if self.autoUpdate, !self.downloading {
-                        self.message = "发现新版本 \(info.version)，开始后台下载…"
-                        self.download(info)
-                    } else {
-                        self.message = "发现新版本 \(info.version)（当前 \(self.currentVersion)）"
+            var info = ReleaseInfo(version: tag, notes: obj["body"] as? String ?? "")
+            if let s = obj["html_url"] as? String { info.pageURL = URL(string: s) }
+            if let assets = obj["assets"] as? [[String: Any]] {
+                for a in assets {
+                    if let n = a["name"] as? String, n.hasSuffix(".zip"),
+                       let u = a["browser_download_url"] as? String,
+                       let au = URL(string: u) {
+                        info.assetURL = au
+                        break
                     }
-                } else {
-                    self.message = "已是最新版本（\(self.currentVersion)）"
                 }
             }
+            done(info, nil)
+        }.resume()
+    }
+
+    /// 通道二：github.com 的 releases/latest 重定向，从最终 URL 取 tag
+    private func checkViaRedirect(_ done: @escaping (ReleaseInfo?, String?) -> Void) {
+        guard let url = URL(string: "https://github.com/\(Self.owner)/\(Self.repo)/releases/latest") else {
+            done(nil, "内部错误")
+            return
+        }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 12
+
+        URLSession.shared.dataTask(with: req) { _, resp, error in
+            if let error = error {
+                done(nil, "github.com 不可达（\(error.localizedDescription)）")
+                return
+            }
+            guard let finalURL = resp?.url else {
+                done(nil, "无重定向结果")
+                return
+            }
+            let comps = finalURL.pathComponents
+            guard let idx = comps.firstIndex(of: "tag"), idx + 1 < comps.count else {
+                done(nil, "未能从地址解析版本（\(finalURL.path)）")
+                return
+            }
+            let tag = comps[idx + 1]
+            let bare = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+
+            var info = ReleaseInfo(version: tag, notes: "")
+            info.pageURL = finalURL
+            info.assetURL = URL(string: "https://github.com/\(Self.owner)/\(Self.repo)/releases/download/\(tag)/iFeng-\(bare).zip")
+            done(info, nil)
         }.resume()
     }
 
