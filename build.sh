@@ -87,7 +87,7 @@ fi
 
 echo "==> 打包 zip"
 mkdir -p dist
-ZIP="dist/风扇控制-${VERSION}.zip"
+ZIP="dist/iFeng-${VERSION}.zip"
 rm -f "$ZIP"
 # ditto 保留可执行权限、符号链接与扩展属性，解压后即可直接双击运行
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"

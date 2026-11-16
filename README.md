@@ -45,6 +45,14 @@ macOS 菜单栏风扇管理工具，功能定位与 Macs Fan Control / smcFanCon
 - 面板显示「满量程约 N 秒」，直观判断快慢
 - 平滑只作用于升降过程，目标本身仍由恒温闭环/曲线决定，两者互不干扰
 
+### 自动更新（后台下载，下好再提示）
+
+- 启动 5 秒后静默检查 GitHub Release，之后每 6 小时一次
+- 发现新版本**自动在后台下载并解压校验**（版本号、可执行文件都要对得上），全程不打扰
+- 下载完成才提示：菜单栏面板出现绿色「可更新」角标，「设置」里显示「新版本 x.y.z 已下载」
+- 点「重启并安装」后自替换并自动重启；已下载的包会留存，下次启动仍可提示
+- 「设置」里可关闭自动下载，改为手动「检查更新」
+
 ### 安全机制
 
 - 目标转速一律夹取到硬件真实范围 `[F0Mn, F0Mx]`
@@ -54,44 +62,42 @@ macOS 菜单栏风扇管理工具，功能定位与 Macs Fan Control / smcFanCon
 
 ---
 
-## 二、为什么是「源码 + 构建脚本」
+## 二、构建与分发方式
 
-本包在 Windows 上生成，没有 Swift / Xcode 工具链，无法预编译出可执行文件。所以交付的是完整源码，由你的 Mac 完成最后一步编译——你机器上有 Xcode 14.3.1，`clang` + `swiftc` 都在，这条路是通的。全程不需要打开 Xcode。
+成品由 **GitHub Actions 的 macOS runner** 编译（`.github/workflows/build.yml`，`runs-on: macos-15`），产出 Intel + Apple Silicon 通用二进制，与你 Mac 上的环境无关。
+
+公开仓库的 macOS runner 不计费，每次 push 到 `main` 自动出包；打 `v*` tag 会自动创建 Release 并附上 zip —— 应用内的「检查更新」正是查这个 Release。
+
+本地也可以自行编译（需要 Xcode 或命令行工具），见「方式 B」。
 
 ---
 
 ## 三、安装
 
-### 方式 A：一键脚本（推荐）
+### 方式 A：直接安装成品包（推荐）
 
-把 `ifeng-installer.command` 放到 Mac 上（任意目录，如 `~/Downloads`），执行：
+1. 下载 **`iFeng-1.1.0.zip`**（CI 产出的通用二进制，Intel / Apple Silicon 均可运行）
+2. 双击解压，把 `风扇控制.app` 拖进「应用程序」
+3. 首次启动：右键点图标 →「打开」（应用为 ad-hoc 签名，需绕过 Gatekeeper 一次）
+4. 点菜单栏图标 →「设置」→ **「一键启用风扇写入」**，输入一次管理员密码
 
-```
-cd ~/Downloads
-bash ifeng-installer.command
-```
+第 4 步之前只能读温度；完成后即可写转速。全程不需要打开终端。
 
-脚本会依次完成：解包 → 编译 → 安装（中途要输一次管理员密码）→ 启动。
+> 解压请用系统自带的「归档实用工具」或 `ditto -x -k`，第三方解压工具可能丢失可执行权限。
 
-若提示「无法验证开发者」：
-
-```
-xattr -d com.apple.quarantine ~/Downloads/ifeng-installer.command
-```
-
-### 方式 B：手动三步
+### 方式 B：从源码构建（可选）
 
 ```
-cd ~/Downloads/ifeng-1.0.0
+cd ~/Downloads/ifeng-1.1.0
 xattr -dr com.apple.quarantine .
-bash build.sh              # 编译
-./build/fanctl diag        # 先验证 SMC 可读（关键一步）
-sudo bash install.sh       # 安装
+bash build.sh               # 编译，自动产出 dist/iFeng-1.1.0.zip
+./build/fanctl diag         # 验证 SMC 可读（关键一步）
+sudo bash install.sh        # 安装（或用方式 A 的第 3、4 步）
 ```
 
-`fanctl diag` 应打印风扇数量、`F0Tg` 类型、CPU/GPU 温度。这一步能过，说明硬件层没问题，剩下只是 GUI。
+跨架构构建：`UNIVERSAL=1 bash build.sh`。
 
-安装完成后菜单栏右上角出现风扇图标，点击展开面板。
+`fanctl diag` 应打印风扇数量、`F0Tg` 类型、CPU/GPU 温度。这一步能过，说明硬件层没问题。
 
 ### 卸载
 
@@ -101,9 +107,9 @@ sudo bash uninstall.sh
 
 ### 打包成 zip 分发
 
-`build.sh` 编译完成后会自动产出 **`dist/风扇控制-1.1.0.zip`**，用 `ditto` 打包（保留可执行权限、符号链接与扩展属性），拷到另一台 Mac 解压即可直接双击运行。
+`build.sh` 编译完成后自动产出 **`dist/iFeng-1.1.0.zip`**，用 `ditto` 打包（保留可执行权限、符号链接与扩展属性），拷到另一台 Mac 解压即可直接双击运行。
 
-> 注意：zip 里只有 App，不含 `fanctl` 辅助工具。目标机器仍需再跑一次 `install.sh`（或手动安装 setuid helper），否则只能读温度、不能写转速。
+App 内已内嵌 `fanctl`，目标机器无需再单独安装辅助工具 —— 打开后点「一键启用风扇写入」即可。
 
 ---
 
