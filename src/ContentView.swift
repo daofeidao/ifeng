@@ -12,16 +12,6 @@ struct ContentView: View {
     @State private var showAllTemps = true
     @State private var dragID: UUID? = nil
 
-    /// 面板高度按页签收紧：内容矮的页不留「下巴」
-    private var panelHeight: CGFloat {
-        switch tab {
-        case 0:  return showAllTemps ? 620 : 500   // 定速：传感器全显时最高
-        case 1:  return 620                         // 曲线：图表 + 节点列表
-        case 2:  return 505                         // 控温
-        default: return 480                         // 我的
-        }
-    }
-
     /// 启动时按持久化的模式选择初始页签
     private static func initialTab(for mode: FanMode) -> Int {
         switch mode {
@@ -49,8 +39,7 @@ struct ContentView: View {
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .frame(width: 372, height: panelHeight)
-        .animation(.easeOut(duration: 0.15), value: tab)
+        .frame(width: 372, height: 620)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             if !tabInitialized {
@@ -283,11 +272,11 @@ struct ContentView: View {
     }
 
     private var curveTab: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             presetRow
 
             if model.mode == .auto {
-                Text("当前由系统固件控温，虚线为固件默认曲线（示意）。点 1 / 2 / 3 即可接管。")
+                Text("当前由系统固件控温（虚线为示意）。点 1 / 2 / 3 即可接管。")
                     .font(.system(size: 9))
                     .foregroundColor(.orange)
                     .fixedSize(horizontal: false, vertical: true)
@@ -295,40 +284,33 @@ struct ContentView: View {
 
             graph
 
-            hintRow
-
+            // 节点列表占满剩余高度：12 个节点在 620 高度下全部直接显示，不滚动
             ScrollView {
-                VStack(spacing: 4) {
+                VStack(spacing: 2) {
                     ForEach(sortedCurve) { pt in
                         curveRow(pt)
                     }
                 }
             }
-            .frame(maxHeight: 156)
-
-            Spacer(minLength: 0)
+            .frame(maxHeight: .infinity)
         }
     }
 
     private var presetRow: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 6) {
-                presetButton(1, "1 静音")
-                presetButton(2, "2 均衡")
-                presetButton(3, "3 性能")
-            }
-            HStack(spacing: 6) {
-                Button("系统自动") { model.restoreAuto() }
-                    .controlSize(.mini)
-                Button("加节点") { model.addCurvePoint() }
-                    .controlSize(.mini)
-                Button("恢复默认") {
-                    model.resetCurve()
-                    if model.mode == .curve { model.applyNow() }
-                }
+        HStack(spacing: 5) {
+            presetButton(1, "1静音")
+            presetButton(2, "2均衡")
+            presetButton(3, "3性能")
+            Button("系统自动") { model.restoreAuto() }
                 .controlSize(.mini)
-                Spacer()
+            Button("加节点") { model.addCurvePoint() }
+                .controlSize(.mini)
+            Button("恢复默认") {
+                model.resetCurve()
+                if model.mode == .curve { model.applyNow() }
             }
+            .controlSize(.mini)
+            Spacer()
         }
     }
 
@@ -338,7 +320,7 @@ struct ContentView: View {
         } label: {
             Text(title)
                 .font(.system(size: 10, weight: model.presetLevel == level ? .semibold : .regular))
-                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 5)
@@ -350,19 +332,6 @@ struct ContentView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private var hintRow: some View {
-        HStack {
-            Text("拖动圆点：左右改温度，上下改转速")
-                .font(.system(size: 9))
-                .foregroundColor(.secondary)
-            Spacer()
-            Text("\(model.curve.count) 节点")
-                .font(.system(size: 9))
-                .foregroundColor(.secondary)
-                .monospacedDigit()
-        }
     }
 
     private func curveRow(_ pt: CurvePoint) -> some View {
@@ -500,7 +469,7 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(height: 168)
+        .frame(height: 140)
         .background(Color.gray.opacity(0.07))
         .cornerRadius(6)
         .overlay(
