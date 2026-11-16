@@ -159,16 +159,18 @@ struct ContentView: View {
         Button {
             selectTab(idx)
         } label: {
-            Text(title)
-                .font(.system(size: 11, weight: tab == idx ? .semibold : .regular))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(tab == idx ? Color.accentColor.opacity(0.15) : Color.clear)
-                )
-                .foregroundColor(tab == idx ? Color.accentColor : Color.secondary)
-                .contentShape(Rectangle())
+            VStack(spacing: 3) {
+                Text(title)
+                    .font(.system(size: 11, weight: tab == idx ? .semibold : .regular))
+                    .foregroundColor(tab == idx ? Color.accentColor : Color.secondary)
+                // 选中态只保留一条细下划线，不再用蓝色底框
+                Rectangle()
+                    .fill(tab == idx ? Color.accentColor : Color.clear)
+                    .frame(height: 1.5)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 3)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -618,13 +620,18 @@ struct ContentView: View {
 
     private var versionBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Text("版本")
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
                 Text(AppInfo.version)
                     .font(.system(size: 11, weight: .medium))
                     .monospacedDigit()
+                Text(updater.message)
+                    .font(.system(size: 9))
+                    .foregroundColor(updater.readyToInstall ? .green : .secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Spacer()
                 Button(updater.checking ? "检查中…" : "检查更新") {
                     updater.check()
@@ -654,22 +661,18 @@ struct ContentView: View {
                 Spacer()
             }
 
-            Toggle(isOn: Binding(get: { updater.autoUpdate },
-                                 set: { updater.autoUpdate = $0 })) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("自动检查并后台下载更新").font(.system(size: 10))
-                    Text("下好后才提示，不打断使用")
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                }
+            // 自动更新开关放在「检查更新」按钮正下方，紧凑省空间
+            HStack(spacing: 6) {
+                Spacer()
+                Text("自动后台更新")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                Toggle("", isOn: Binding(get: { updater.autoUpdate },
+                                        set: { updater.autoUpdate = $0 }))
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
             }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-
-            Text(updater.message)
-                .font(.system(size: 9))
-                .foregroundColor(updater.readyToInstall ? .green : .secondary)
-                .fixedSize(horizontal: false, vertical: true)
 
             if let err = updater.lastError {
                 Text(err)
@@ -700,26 +703,16 @@ struct ContentView: View {
             Text("状态栏显示")
                 .font(.system(size: 10, weight: .medium))
 
-            Toggle(isOn: Binding(get: { model.menuShowNet },
-                                 set: { model.menuShowNet = $0 })) {
-                Text("网络速率").font(.system(size: 10))
+            // 三个开关并列一行，节省面板高度
+            HStack(spacing: 14) {
+                statusToggle("网速", Binding(get: { model.menuShowNet },
+                                            set: { model.menuShowNet = $0 }))
+                statusToggle("温度", Binding(get: { model.menuShowTemp },
+                                            set: { model.menuShowTemp = $0 }))
+                statusToggle("转速", Binding(get: { model.menuShowRPM },
+                                            set: { model.menuShowRPM = $0 }))
+                Spacer()
             }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-
-            Toggle(isOn: Binding(get: { model.menuShowTemp },
-                                 set: { model.menuShowTemp = $0 })) {
-                Text("温度").font(.system(size: 10))
-            }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-
-            Toggle(isOn: Binding(get: { model.menuShowRPM },
-                                 set: { model.menuShowRPM = $0 })) {
-                Text("风扇转速").font(.system(size: 10))
-            }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
 
             unitRow("网速单位", selection: Binding(get: { model.netUnit },
                                                  set: { model.netUnit = $0 }),
@@ -728,27 +721,18 @@ struct ContentView: View {
             unitRow("风速单位", selection: Binding(get: { model.fanUnit },
                                                  set: { model.fanUnit = $0 }),
                     cases: FanUnit.allCases.map { ($0.title, $0) })
-
-            HStack(spacing: 4) {
-                Text("当前")
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
-                Text(barPreview)
-                    .font(.system(size: 9, weight: .medium))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                Spacer()
-            }
         }
     }
 
-    private var barPreview: String {
-        var s = ""
-        if model.menuShowNet { s += model.netText + "  " }
-        s += "风扇 "
-        if model.menuShowTemp { s += model.tempBarText + " " }
-        if model.menuShowRPM { s += model.rpmBarText }
-        return s
+    private func statusToggle(_ title: String, _ binding: Binding<Bool>) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .font(.system(size: 10))
+            Toggle("", isOn: binding)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .labelsHidden()
+        }
     }
 
     private func unitRow<T: Hashable & Identifiable>(_ title: String,
@@ -864,8 +848,14 @@ struct ContentView: View {
             Button("恢复系统自动") { model.restoreAuto() }
                 .controlSize(.small)
             Spacer()
-            Button("退出") { model.quitSafely() }
-                .controlSize(.small)
+            Button {
+                model.quitSafely()
+            } label: {
+                Text("退出")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.red)
+            }
+            .controlSize(.small)
         }
 
         Text("退出或注销时会把风扇交还系统固件。若被强制结束进程，风扇会停在最后转速，重新打开后点「恢复系统自动」即可。")
