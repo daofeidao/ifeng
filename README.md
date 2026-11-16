@@ -1,4 +1,4 @@
-# 风扇控制 · iFeng 1.1.0
+# 风扇控制 · iFeng 1.2.0
 
 macOS 菜单栏风扇管理工具，功能定位与 Macs Fan Control / smcFanControl 同级。
 
@@ -62,35 +62,44 @@ macOS 菜单栏风扇管理工具，功能定位与 Macs Fan Control / smcFanCon
 
 ---
 
-## 二、构建与分发方式
+## 二、构建方式
 
-成品由 **GitHub Actions 的 macOS runner** 编译（`.github/workflows/build.yml`，`runs-on: macos-15`），产出 Intel + Apple Silicon 通用二进制，与你 Mac 上的环境无关。
+**默认在你的 Mac 本机编译**（`bash build.sh`）。这也是唯一能验证「与 Xcode 14.3 兼容性」的路径 —— 云端 CI 用的是 Xcode 16，SwiftUI 的部分限制已经放宽，会出现「CI 通过、本机不过」的情况（详见第七节）。
 
-公开仓库的 macOS runner 不计费，每次 push 到 `main` 自动出包；打 `v*` tag 会自动创建 Release 并附上 zip —— 应用内的「检查更新」正是查这个 Release。
-
-本地也可以自行编译（需要 Xcode 或命令行工具），见「方式 B」。
+`.github/workflows/build.yml` 是可选备选：把仓库交给 GitHub 的 macOS runner 出通用二进制，打 `v*` tag 时自动发 Release（应用内「自动更新」依赖 Release）。需要成品 zip 或跨机分发时用它，日常改动走本机。
 
 ---
 
 ## 三、安装
 
-### 方式 A：直接安装成品包（推荐）
+### 方式 A：本机一键脚本（默认）
 
-1. 下载 **`iFeng-1.1.0.zip`**（CI 产出的通用二进制，Intel / Apple Silicon 均可运行）
+把 `ifeng-installer.command` 放到 Mac 上任意目录，执行：
+
+```
+cd ~/Downloads
+bash ifeng-installer.command
+```
+
+脚本在本机依次完成：解包 → `clang`/`swiftc` 编译 → 生成图标（`sips` + `iconutil`）→ ad-hoc 签名 → 安装 → 启动。中途输一次管理员密码，全程不联网。
+
+### 方式 B：现成 zip（即装即用）
+
+1. 下载 **`iFeng-1.2.0.zip`**（CI 产出的通用二进制，Intel / Apple Silicon 均可运行）
 2. 双击解压，把 `风扇控制.app` 拖进「应用程序」
-3. 首次启动：右键点图标 →「打开」（应用为 ad-hoc 签名，需绕过 Gatekeeper 一次）
-4. 点菜单栏图标 →「设置」→ **「一键启用风扇写入」**，输入一次管理员密码
+3. 首次启动：右键点图标 →「打开」（ad-hoc 签名，需绕过 Gatekeeper 一次）
+4. 菜单栏图标 →「设置」→ **「一键启用风扇写入」**，输入一次管理员密码
 
-第 4 步之前只能读温度；完成后即可写转速。全程不需要打开终端。
+第 4 步之前只能读温度；完成后即可写转速。
 
-> 解压请用系统自带的「归档实用工具」或 `ditto -x -k`，第三方解压工具可能丢失可执行权限。
+> 解压请用系统自带「归档实用工具」或 `ditto -x -k`，第三方解压工具可能丢失可执行权限。
 
 ### 方式 B：从源码构建（可选）
 
 ```
-cd ~/Downloads/ifeng-1.1.0
+cd ~/Downloads/ifeng-1.2.0
 xattr -dr com.apple.quarantine .
-bash build.sh               # 编译，自动产出 dist/iFeng-1.1.0.zip
+bash build.sh               # 编译，自动产出 dist/iFeng-1.2.0.zip
 ./build/fanctl diag         # 验证 SMC 可读（关键一步）
 sudo bash install.sh        # 安装（或用方式 A 的第 3、4 步）
 ```
@@ -107,7 +116,7 @@ sudo bash uninstall.sh
 
 ### 打包成 zip 分发
 
-`build.sh` 编译完成后自动产出 **`dist/iFeng-1.1.0.zip`**，用 `ditto` 打包（保留可执行权限、符号链接与扩展属性），拷到另一台 Mac 解压即可直接双击运行。
+`build.sh` 编译完成后自动产出 **`dist/iFeng-1.2.0.zip`**，用 `ditto` 打包（保留可执行权限、符号链接与扩展属性），拷到另一台 Mac 解压即可直接双击运行。
 
 App 内已内嵌 `fanctl`，目标机器无需再单独安装辅助工具 —— 打开后点「一键启用风扇写入」即可。
 
@@ -146,6 +155,17 @@ fanctl watch              # 终端实时刷新（Ctrl-C 退出）
 | 提示权限不足 | setuid 位丢失：`sudo chmod u+s /usr/local/bin/fanctl` |
 | 硬盘位温度异常 | 换装 860 EVO 后原硬盘温度传感器无有效数据，`list` 已过滤异常值，属正常 |
 | 界面渲染略有延迟 | 2011 款无 Metal，Ventura 走兼容渲染路径，属系统层面现象，不影响功能 |
+| 本机编译报 `Extra argument in call` / `Type 'X' cannot conform to 'View'` | 八成是 SwiftUI `ViewBuilder` 子视图超限，见下方说明 |
+
+### SwiftUI ViewBuilder 的 10 子视图上限
+
+`VStack` / `HStack` / `Group` 的大括号是 `@ViewBuilder` 闭包，它的底层是一组 `buildBlock(_:_:…)` 重载，**只定义到 10 个参数**（Xcode 14 的 SDK）。直接子视图超过 10 个，编译器找不到匹配的重载，报出的却是「Extra argument in call」这类误导性错误。
+
+- `if` / `switch` 会被 `buildEither` 包成 `_ConditionalContent`，整体只算 **1 个**
+- 抽成 computed property 或再套一层 `VStack`，计数重新从 0 开始
+- Xcode 15+ 的 SDK 改用可变泛型实现，基本没有此限制
+
+**这就是「云端 CI 通过、本机编译不过」的典型来源**：CI 用 Xcode 16，本机 Xcode 14.3。本仓库约定每个 ViewBuilder 块不超过 10 个直接子视图，拆分后的视图分别是 `controlTab` / `curveTab` / `settingsTab` / `statusBarSection` / `settingsFooter`。
 | 强制结束进程后风扇不回落 | 代码没有机会收尾。重新打开 App → 设置 → 恢复系统自动 |
 
 ---
