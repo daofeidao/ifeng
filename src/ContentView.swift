@@ -7,9 +7,20 @@ struct ContentView: View {
     @ObservedObject var updater: Updater
 
     @State private var tab: Int = 0
+    @State private var tabInitialized = false
     @State private var sliderRPM: Double = 3000
     @State private var showAllTemps = true
     @State private var dragID: UUID? = nil
+
+    /// 启动时按持久化的模式选择初始页签
+    private static func initialTab(for mode: FanMode) -> Int {
+        switch mode {
+        case .manual: return 0
+        case .curve:  return 1
+        case .target: return 2
+        case .auto:   return 1
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,6 +42,10 @@ struct ContentView: View {
         .frame(width: 372, height: 620)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
+            if !tabInitialized {
+                tabInitialized = true
+                tab = Self.initialTab(for: model.mode)   // 启动时落在当前模式对应的页签
+            }
             syncSlider()
             updater.checkIfStale()
         }
