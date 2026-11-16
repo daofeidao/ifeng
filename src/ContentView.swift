@@ -227,13 +227,23 @@ struct ContentView: View {
     private var speedQuickRow: some View {
         HStack(spacing: 6) {
             ForEach(quickSpeeds, id: \.self) { v in
-                Button(v <= 0 ? "0" : "\(Int(v))") {
-                    sliderRPM = v
-                    model.manualRPM = v
-                    if model.mode != .manual { model.mode = .manual }
-                    model.applyNow()
-                }
-                .controlSize(.mini)
+                // 同页签：不用 Button，避免点击后的蓝色焦点圈
+                let selected = Int(sliderRPM.rounded()) == Int(v)
+                Text(v <= 0 ? "0" : "\(Int(v))")
+                    .font(.system(size: 10, weight: selected ? .semibold : .regular))
+                    .foregroundColor(selected ? Color.accentColor : Color.primary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule().fill(Color.gray.opacity(selected ? 0.18 : 0.10))
+                    )
+                    .contentShape(Capsule())
+                    .onTapGesture {
+                        sliderRPM = v
+                        model.manualRPM = v
+                        if model.mode != .manual { model.mode = .manual }
+                        model.applyNow()
+                    }
             }
             Spacer()
         }
