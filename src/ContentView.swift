@@ -122,7 +122,7 @@ struct ContentView: View {
     }
 
     private var statusColor: Color {
-        guard let t = model.maxTemp else { return .gray }
+        guard let t = model.controlTemp else { return .gray }
         if t >= 90 { return .red }
         if t >= 78 { return .orange }
         if t <= 55 { return .blue }
@@ -130,7 +130,7 @@ struct ContentView: View {
     }
 
     private var tempText: String {
-        guard let t = model.maxTemp else { return "--" }
+        guard let t = model.controlTemp else { return "--" }
         return String(format: "%.0f", t)
     }
 
@@ -301,7 +301,14 @@ struct ContentView: View {
 
     private var visibleTemps: [FStatus.T] {
         let sorted = model.temps.sorted { $0.v > $1.v }
-        return showAllTemps ? sorted : Array(sorted.prefix(5))
+        guard !showAllTemps else { return sorted }
+        var list = Array(sorted.prefix(5))
+        // 控制用的传感器（TC0P）必须始终可见，哪怕它的温度不排在前 5
+        if let ctl = model.temps.first(where: { $0.k == "TC0P" }),
+           !list.contains(where: { $0.id == ctl.id }) {
+            list.append(ctl)
+        }
+        return list
     }
 
     private var tempSection: some View {
@@ -325,6 +332,11 @@ struct ContentView: View {
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
                     Spacer()
+                    if t.k == "TC0P" {
+                        Text("控制")
+                            .font(.system(size: 8))
+                            .foregroundColor(.accentColor)
+                    }
                     Text(t.k)
                         .font(.system(size: 8, design: .monospaced))
                         .foregroundColor(Color.gray.opacity(0.65))
@@ -438,7 +450,7 @@ struct ContentView: View {
                 }
                 .stroke(Color.gray.opacity(0.16), lineWidth: 0.5)
 
-                if let t = model.maxTemp {
+                if let t = model.controlTemp {
                     Path { p in
                         let x = px(t, w)
                         p.move(to: CGPoint(x: x, y: 0))

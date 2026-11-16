@@ -184,6 +184,19 @@ final class FanModel: ObservableObject {
         temps.map { $0.v }.filter { $0 > 1 && $0 < 120 }.max()
     }
 
+    /// 控制用温度：优先「CPU 附近」(TC0P)。
+    ///
+    /// 为什么不用 maxTemp：本机 TC0E / TC0F 常年 82–87 ℃，即使空闲也很高，
+    /// 用它做控制量会让目标温度 66 ℃ 永远超差 —— 风扇一直全速，恒温模式形同失效。
+    /// TC0P 与用户设定目标温度的语义一致，Macs Fan Control 也以它为准。
+    /// maxTemp 仍保留，用于过热强制全速这类安全判断。
+    var controlTemp: Double? {
+        if let p = temps.first(where: { $0.k == "TC0P" }), p.v > 1, p.v < 120 {
+            return p.v
+        }
+        return maxTemp
+    }
+
     var primaryRPM: Double { fans.first?.ac ?? 0 }
 
     /// 硬件真实下限 / 上限
@@ -200,7 +213,7 @@ final class FanModel: ObservableObject {
     /// 菜单栏文本：温度必显，转速 / 网速可选
     var menuBarText: String {
         var parts: [String] = []
-        parts.append(maxTemp.map { String(format: "%.0f°", $0) } ?? "--°")
+        parts.append(controlTemp.map { String(format: "%.0f°", $0) } ?? "--°")
         if menuShowRPM, primaryRPM > 0 {
             parts.append("\(Int(primaryRPM.rounded()))")
         }
@@ -211,14 +224,14 @@ final class FanModel: ObservableObject {
     }
 
     var targetDeviation: Double? {
-        guard let t = maxTemp else { return nil }
+        guard let t = controlTemp else { return nil }
         return t - targetTemp
     }
 
-    var curveRPM: Double { rpmFor(temp: maxTemp ?? targetTemp) }
+    var curveRPM: Double { rpmFor(temp: controlTemp ?? targetTemp) }
 
     var statusColorHint: String {
-        guard let t = maxTemp else { return "" }
+        guard let t = controlTemp else { return "" }
         if t >= 90 { return "温度偏高" }
         if t >= 78 { return "偏热" }
         if t <= 55 { return "凉爽" }
@@ -355,25 +368,34 @@ final class FanModel: ObservableObject {
         return min(max(rpm, r.lowerBound), r.upperBound)
     }
 
+    /// 允许把转速设为 0（用户要求），但温度偏高时不允许真停转。
+    /// 实测本机设 0 会让风扇完全停转、核心温度几分钟内冲到 84 ℃，必须兜住。
+    private func safetyFloor(_ v: Double) -> Double {
+        guard v < fanMin else { return v }
+        if let m = maxTemp, m >= 58 { return fanMin }
+        return v
+    }
+
     private func desiredRPM(advance: Bool = true) -> Double {
         switch mode {
         case .auto:
             return 0
         case .manual:
-            return clamp(manualRPM)
+            return safetyFloor(clamp(manualRPM))
         case .curve:
-            return rpmFor(temp: maxTemp ?? targetTemp)
+            return safetyFloor(rpmFor(temp: controlTemp ?? targetTemp))
         case .target:
-            return loopTarget(advance: advance)
+            return safetyFloor(loopTarget(advance: advance))
         }
     }
 
     /// 恒温闭环：以目标温度为设定值，按误差比例增减转速
     private func loopTarget(advance: Bool = true) -> Double {
         let r = sliderRange
-        guard let t = maxTemp else { return clamp(manualRPM) }
+        guard let t = controlTemp else { return clamp(manualRPM) }
 
-        if t >= 95 { return r.upperBound }
+        // 过热保护按最高温判断，与显示/控制用的 TC0P 分开
+        if let m = maxTemp, m >= 95 { return r.upperBound }
 
         var rpm = loopRPM
         if rpm <= 0 { rpm = rpmFor(temp: targetTemp) }
