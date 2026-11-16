@@ -148,6 +148,11 @@ final class FanModel: ObservableObject {
     @Published private(set) var lastUpdate = Date.distantPast
     /// 最近一次读到的有效转速：偶尔 SMC 读失败时用它兜底，避免状态栏闪成 "--"
     private var lastKnownRPM: Double = 0
+
+    /// 对外展示用的转速（优先实时值，读失败时退回最近有效值）
+    var displayRPM: Double {
+        primaryRPM > 1 ? primaryRPM : lastKnownRPM
+    }
     /// 最近一次真正写入 SMC 的目标转速（平滑过渡时会在目标与当前之间移动）
     @Published private(set) var writtenRPM: Double = -1
     /// 网速镜像值（让菜单栏与面板随网速刷新）
@@ -297,7 +302,7 @@ final class FanModel: ObservableObject {
     }
 
     var rpmBarText: String {
-        let v = primaryRPM > 1 ? primaryRPM : lastKnownRPM
+        let v = displayRPM
         guard v > 1 else { return "  --" }
         switch fanUnit {
         case .rpm:  return String(format: "%4d", Int(v.rounded()))

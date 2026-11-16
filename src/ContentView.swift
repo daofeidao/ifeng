@@ -97,7 +97,7 @@ struct ContentView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 0) {
-                Text("\(Int((model.primaryRPM > 1 ? model.primaryRPM : model.lastKnownRPM).rounded())) RPM")
+                Text("\(Int(model.displayRPM.rounded())) RPM")
                     .font(.system(size: 12, weight: .medium))
                     .monospacedDigit()
                     .foregroundColor(rpmStatusColor)
@@ -128,7 +128,7 @@ struct ContentView: View {
 
     /// 转速按占满速的比例变色：低=蓝（安静）→ 绿 → 橙 → 红（满速）
     private var rpmStatusColor: Color {
-        let v = model.primaryRPM > 1 ? model.primaryRPM : model.lastKnownRPM
+        let v = model.displayRPM
         guard model.fanMax > 100, v > 1 else { return .secondary }
         let r = v / model.fanMax
         if r >= 0.95 { return .red }
