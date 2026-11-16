@@ -633,6 +633,27 @@ struct ContentView: View {
                 .disabled(updater.checking || updater.downloading)
             }
 
+            HStack(spacing: 4) {
+                Text("作者：\(AppInfo.author)")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                Button {
+                    NSWorkspace.shared.open(AppInfo.repoURL)
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "safari")
+                            .font(.system(size: 9))
+                        Text("GitHub")
+                    }
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.accentColor)
+                    .underline()
+                }
+                .buttonStyle(.plain)
+                .help("在浏览器中打开项目主页")
+                Spacer()
+            }
+
             Toggle(isOn: Binding(get: { updater.autoUpdate },
                                  set: { updater.autoUpdate = $0 })) {
                 VStack(alignment: .leading, spacing: 1) {

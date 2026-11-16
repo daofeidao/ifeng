@@ -10,6 +10,10 @@ enum AppInfo {
         Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
     }
     static var short: String { version }
+
+    /// 项目主页（应用内「GitHub」链接、自动更新都指向这里）
+    static let repoURL = URL(string: "https://github.com/daofeidao/ifeng")!
+    static let author = "张宏亮"
 }
 
 struct ReleaseInfo {
