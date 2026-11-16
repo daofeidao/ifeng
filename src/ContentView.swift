@@ -18,16 +18,17 @@ struct ContentView: View {
             Divider()
             Group {
                 switch tab {
-                case 0:  controlTab
+                case 0:  speedTab
                 case 1:  curveTab
-                default: settingsTab
+                case 2:  tempTab
+                default: mineTab
                 }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .frame(width: 360, height: 588)
+        .frame(width: 372, height: 620)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             syncSlider()
@@ -48,14 +49,14 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("风扇控制")
                         .font(.system(size: 13, weight: .semibold))
-                    Text("iFeng \(AppInfo.version)")
+                    Text("iFeng \(AppInfo.version) · \(model.mode.title)")
                         .font(.system(size: 9))
                         .foregroundColor(.secondary)
                 }
                 Spacer()
                 if updater.readyToInstall {
                     Button {
-                        tab = 2
+                        tab = 3
                     } label: {
                         Text("可更新")
                             .font(.system(size: 9, weight: .medium))
@@ -67,58 +68,54 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                if model.isRamping {
-                    Text("过渡中")
-                        .font(.system(size: 9, weight: .medium))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.blue.opacity(0.14))
-                        .foregroundColor(.blue)
-                        .cornerRadius(4)
-                }
-                Text(model.statusColorHint)
-                    .font(.system(size: 10, weight: .medium))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(statusColor.opacity(0.15))
-                    .foregroundColor(statusColor)
-                    .cornerRadius(4)
             }
-
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("最高温度")
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text(tempText)
-                            .font(.system(size: 26, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                        Text("°C")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 0) {
-                    Text("风扇转速")
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text("\(Int(model.primaryRPM.rounded()))")
-                            .font(.system(size: 26, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                        Text("RPM")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-            .padding(.horizontal, 2)
+            tempStrip
         }
         .padding(.horizontal, 14)
         .padding(.top, 12)
         .padding(.bottom, 10)
+    }
+
+    private var tempStrip: some View {
+        HStack(spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(tempText)
+                    .font(.system(size: 26, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(statusColor)
+                Text("°C")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                Text("CPU 附近")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                Text(model.statusColorHint)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(statusColor)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 0) {
+                Text("\(Int((model.primaryRPM > 1 ? model.primaryRPM : model.lastKnownRPM).rounded())) RPM")
+                    .font(.system(size: 12, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundColor(rpmStatusColor)
+                if model.isRamping {
+                    Text("过渡中")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundColor(.blue)
+                } else if model.isForcing {
+                    Text("已接管")
+                        .font(.system(size: 8))
+                        .foregroundColor(.orange)
+                } else {
+                    Text("系统自动")
+                        .font(.system(size: 8))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
     }
 
     private var statusColor: Color {
@@ -129,41 +126,88 @@ struct ContentView: View {
         return .green
     }
 
+    /// 转速按占满速的比例变色：低=蓝（安静）→ 绿 → 橙 → 红（满速）
+    private var rpmStatusColor: Color {
+        let v = model.primaryRPM > 1 ? model.primaryRPM : model.lastKnownRPM
+        guard model.fanMax > 100, v > 1 else { return .secondary }
+        let r = v / model.fanMax
+        if r >= 0.95 { return .red }
+        if r >= 0.75 { return .orange }
+        if r <= 0.35 { return .blue }
+        return .green
+    }
+
     private var tempText: String {
         guard let t = model.controlTemp else { return "--" }
         return String(format: "%.0f", t)
     }
 
+    // MARK: - 页签
+
     private var tabBar: some View {
-        Picker("", selection: $tab) {
-            Text("控制").tag(0)
-            Text("曲线").tag(1)
-            Text("设置").tag(2)
+        HStack(spacing: 4) {
+            tabButton(0, "定速")
+            tabButton(1, "曲线")
+            tabButton(2, "控温")
+            tabButton(3, "我的")
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
         .padding(.horizontal, 14)
         .padding(.bottom, 10)
     }
 
-    // MARK: - 控制页
+    private func tabButton(_ idx: Int, _ title: String) -> some View {
+        Button {
+            selectTab(idx)
+        } label: {
+            Text(title)
+                .font(.system(size: 11, weight: tab == idx ? .semibold : .regular))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(tab == idx ? Color.accentColor.opacity(0.15) : Color.clear)
+                )
+                .foregroundColor(tab == idx ? Color.accentColor : Color.secondary)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 
-    private var controlTab: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker("", selection: Binding(get: { model.mode }, set: { model.mode = $0 })) {
-                ForEach(FanMode.allCases) { m in
-                    Text(m.title).tag(m)
-                }
+    private func selectTab(_ idx: Int) {
+        tab = idx
+        switch idx {
+        case 0: if model.mode != .manual { model.mode = .manual }
+        case 1: if model.mode != .curve && model.mode != .auto { model.mode = .curve }
+        case 2: if model.mode != .target { model.mode = .target }
+        default: break
+        }
+    }
+
+    // MARK: - 定速
+
+    private var speedTab: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("固定转速")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("\(Int(sliderRPM.rounded()))")
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(rpmStatusColor)
+                Text("RPM")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
 
-            Text(model.mode.detail)
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            SpeedSlider(value: $sliderRPM, maxValue: model.fanMax) { editing in
+                if model.mode != .manual { model.mode = .manual }
+                model.manualRPM = sliderRPM
+                if !editing { model.applyNow() }
+            }
 
-            modeControls
+            speedQuickRow
 
             Divider()
 
@@ -175,181 +219,28 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder
-    private var modeControls: some View {
-        switch model.mode {
-        case .auto:
-            EmptyView()
-
-        case .target:
-            VStack(spacing: 6) {
-                HStack {
-                    Text("目标温度")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text(String(format: "%.0f °C", model.targetTemp))
-                        .font(.system(size: 11, weight: .medium))
-                        .monospacedDigit()
-                }
-                Slider(value: Binding(get: { model.targetTemp },
-                                      set: { model.targetTemp = $0 }),
-                       in: 45...90, step: 1)
-
-                HStack {
-                    Text("当前温度")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    if let d = model.targetDeviation {
-                        Text(String(format: "%+.1f °C", d))
-                            .font(.system(size: 11, weight: .medium))
-                            .monospacedDigit()
-                            .foregroundColor(abs(d) <= 1.5 ? .green : (d > 0 ? .orange : .blue))
-                        Text(loopHint(d))
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    } else {
-                        Text("--").font(.system(size: 11)).foregroundColor(.secondary)
-                    }
-                }
-            }
-
-        case .curve:
-            VStack(spacing: 6) {
-                HStack {
-                    Text("当前温度对应转速")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text("\(Int(model.curveRPM.rounded())) RPM")
-                        .font(.system(size: 11, weight: .medium))
-                        .monospacedDigit()
-                }
-                Button("编辑曲线（\(model.curve.count) 个节点）") {
-                    tab = 1
-                }
-                .controlSize(.small)
-            }
-
-        case .manual:
-            VStack(spacing: 6) {
-                HStack {
-                    Text("固定转速")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text("\(Int(sliderRPM.rounded())) RPM")
-                        .font(.system(size: 11, weight: .medium))
-                        .monospacedDigit()
-                }
-                Slider(value: $sliderRPM, in: model.sliderRange, step: 25,
-                       onEditingChanged: { editing in
-                           if !editing {
-                               model.manualRPM = sliderRPM
-                               model.applyNow()
-                           }
-                       })
-            }
-        }
-    }
-
-    private func loopHint(_ d: Double) -> String {
-        if d > 1.5 { return "升温中，加速" }
-        if d < -1.5 { return "已达标，减速" }
-        return "稳定"
-    }
-
-    private var fanDetail: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if model.fans.isEmpty {
-                Text("未检测到风扇")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            } else {
-                ForEach(model.fans, id: \.i) { fan in
-                    HStack(spacing: 8) {
-                        Text("风扇 \(fan.i + 1)")
-                            .font(.system(size: 11, weight: .medium))
-                        Text(String(format: "%.0f – %.0f", fan.mn, fan.mx))
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text(String(format: "目标 %.0f", fan.tg))
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                            .monospacedDigit()
-                        if model.isRamping, model.writtenRPM >= 0 {
-                            Text(String(format: "写入 %.0f", model.writtenRPM))
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(.blue)
-                                .monospacedDigit()
-                        }
-                        Text(fan.md != 0 ? "强制" : "自动")
-                            .font(.system(size: 9, weight: .medium))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(fan.md != 0 ? Color.orange.opacity(0.18)
-                                                    : Color.gray.opacity(0.14))
-                            .foregroundColor(fan.md != 0 ? .orange : .secondary)
-                            .cornerRadius(3)
-                    }
-                }
-            }
-        }
-    }
-
-    private var visibleTemps: [FStatus.T] {
-        let sorted = model.temps.sorted { $0.v > $1.v }
-        guard !showAllTemps else { return sorted }
-        var list = Array(sorted.prefix(5))
-        // 控制用的传感器（TC0P）必须始终可见，哪怕它的温度不排在前 5
-        if let ctl = model.temps.first(where: { $0.k == "TC0P" }),
-           !list.contains(where: { $0.id == ctl.id }) {
-            list.append(ctl)
-        }
+    private var quickSpeeds: [Double] {
+        var list: [Double] = [0, 2000, 3500, 5000]
+        if model.fanMax > 5500 { list.append(model.fanMax) }
         return list
     }
 
-    private var tempSection: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text("温度传感器")
-                    .font(.system(size: 11, weight: .medium))
-                Spacer()
-                if model.temps.count > 5 {
-                    Button(showAllTemps ? "收起" : "全部 \(model.temps.count) 项") {
-                        showAllTemps.toggle()
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 10))
-                    .foregroundColor(.accentColor)
+    private var speedQuickRow: some View {
+        HStack(spacing: 6) {
+            ForEach(quickSpeeds, id: \.self) { v in
+                Button(v <= 0 ? "0" : "\(Int(v))") {
+                    sliderRPM = v
+                    model.manualRPM = v
+                    if model.mode != .manual { model.mode = .manual }
+                    model.applyNow()
                 }
+                .controlSize(.mini)
             }
-            ForEach(visibleTemps) { t in
-                HStack(spacing: 6) {
-                    Text(t.n)
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    if t.k == "TC0P" {
-                        Text("控制")
-                            .font(.system(size: 8))
-                            .foregroundColor(.accentColor)
-                    }
-                    Text(t.k)
-                        .font(.system(size: 8, design: .monospaced))
-                        .foregroundColor(Color.gray.opacity(0.65))
-                    Text(String(format: "%.1f °C", t.v))
-                        .font(.system(size: 10, weight: .medium))
-                        .monospacedDigit()
-                        .frame(width: 56, alignment: .trailing)
-                }
-            }
+            Spacer()
         }
     }
 
-    // MARK: - 曲线页
+    // MARK: - 曲线
 
     private var sortedCurve: [CurvePoint] {
         model.curve.sorted { $0.temp < $1.temp }
@@ -357,22 +248,18 @@ struct ContentView: View {
 
     private var curveTab: some View {
         VStack(alignment: .leading, spacing: 10) {
+            presetRow
+
+            if model.mode == .auto {
+                Text("当前由系统固件控温，虚线为固件默认曲线（示意）。点 1 / 2 / 3 即可接管。")
+                    .font(.system(size: 9))
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             graph
 
-            Text("拖动圆点直接调整：左右改温度，上下改转速。")
-                .font(.system(size: 9))
-                .foregroundColor(.secondary)
-
-            HStack(spacing: 8) {
-                Button("添加节点") { model.addCurvePoint() }
-                    .controlSize(.mini)
-                Button("恢复默认") { model.resetCurve() }
-                    .controlSize(.mini)
-                Spacer()
-                Text("30 – 105 °C，≥95 °C 全速")
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
-            }
+            hintRow
 
             ScrollView {
                 VStack(spacing: 4) {
@@ -381,9 +268,64 @@ struct ContentView: View {
                     }
                 }
             }
-            .frame(maxHeight: 196)
+            .frame(maxHeight: 156)
 
             Spacer(minLength: 0)
+        }
+    }
+
+    private var presetRow: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                presetButton(1, "1 静音")
+                presetButton(2, "2 均衡")
+                presetButton(3, "3 性能")
+            }
+            HStack(spacing: 6) {
+                Button("系统自动") { model.restoreAuto() }
+                    .controlSize(.mini)
+                Button("加节点") { model.addCurvePoint() }
+                    .controlSize(.mini)
+                Button("恢复默认") {
+                    model.resetCurve()
+                    if model.mode == .curve { model.applyNow() }
+                }
+                .controlSize(.mini)
+                Spacer()
+            }
+        }
+    }
+
+    private func presetButton(_ level: Int, _ title: String) -> some View {
+        Button {
+            model.applyPreset(level)
+        } label: {
+            Text(title)
+                .font(.system(size: 10, weight: model.presetLevel == level ? .semibold : .regular))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(model.presetLevel == level
+                              ? Color.accentColor.opacity(0.16)
+                              : Color.gray.opacity(0.10))
+                )
+                .foregroundColor(model.presetLevel == level ? Color.accentColor : Color.primary)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var hintRow: some View {
+        HStack {
+            Text("拖动圆点：左右改温度，上下改转速")
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+            Spacer()
+            Text("\(model.curve.count) 节点")
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+                .monospacedDigit()
         }
     }
 
@@ -436,6 +378,7 @@ struct ContentView: View {
 
     private var graph: some View {
         let pts = sortedCurve
+        let sys = model.systemCurvePoints
         let r = model.sliderRange
         return GeometryReader { geo in
             let w = geo.size.width
@@ -449,6 +392,16 @@ struct ContentView: View {
                     }
                 }
                 .stroke(Color.gray.opacity(0.16), lineWidth: 0.5)
+
+                // 系统固件默认曲线（参考）
+                Path { p in
+                    for (i, pt) in sys.enumerated() {
+                        let point = CGPoint(x: px(pt.temp, w), y: py(pt.rpm, h, r))
+                        if i == 0 { p.move(to: point) } else { p.addLine(to: point) }
+                    }
+                }
+                .stroke(Color.gray.opacity(model.mode == .auto ? 0.75 : 0.35),
+                        style: StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
 
                 if let t = model.controlTemp {
                     Path { p in
@@ -466,7 +419,7 @@ struct ContentView: View {
                         if i == 0 { p.move(to: point) } else { p.addLine(to: point) }
                     }
                 }
-                .stroke(Color.accentColor,
+                .stroke(Color.accentColor.opacity(model.mode == .auto ? 0.45 : 1),
                         style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
 
                 ForEach(pts) { pt in
@@ -511,7 +464,7 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(height: 172)
+        .frame(height: 168)
         .background(Color.gray.opacity(0.07))
         .cornerRadius(6)
         .overlay(
@@ -529,7 +482,7 @@ struct ContentView: View {
 
         if dragID == nil {
             var bestID: UUID? = nil
-            var bestDist: CGFloat = 2200    // 约 47pt 半径的平方，容错更大
+            var bestDist: CGFloat = 2200    // 约 47pt 半径的平方
             for p in pts {
                 let dx = px(p.temp, size.width) - loc.x
                 let dy = py(p.rpm, size.height, r) - loc.y
@@ -551,7 +504,7 @@ struct ContentView: View {
 
     private func tempAt(_ x: CGFloat, _ w: CGFloat) -> Double {
         let ratio = Double(min(max(x / max(w, 1), 0), 1))
-        return 30.0 + ratio * 75.0      // 30 – 105 °C
+        return 30.0 + ratio * 75.0
     }
 
     private func rpmAt(_ y: CGFloat, _ h: CGFloat, _ r: ClosedRange<Double>) -> Double {
@@ -570,125 +523,151 @@ struct ContentView: View {
         return h - CGFloat(v) * h
     }
 
-    // MARK: - 设置页
+    // MARK: - 控温
 
-    private var settingsTab: some View {
+    private var tempTab: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("目标温度")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(String(format: "%.0f", model.targetTemp))
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(statusColor)
+                Text("°C")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+
+            Slider(value: Binding(get: { model.targetTemp },
+                                  set: { model.targetTemp = $0 }),
+                   in: 45...90, step: 1,
+                   onEditingChanged: { editing in
+                       if !editing { model.applyNow() }
+                   })
+
+            HStack {
+                Text("45").font(.system(size: 8)).foregroundColor(.secondary)
+                Spacer()
+                Text("90").font(.system(size: 8)).foregroundColor(.secondary)
+            }
+
+            deviationRow
+
+            Divider()
+
+            fanDetail
+
+            Divider()
+
+            tempSection
+        }
+    }
+
+    private var deviationRow: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text("当前温度")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                Spacer()
+                if let d = model.targetDeviation {
+                    Text(String(format: "%+.1f °C", d))
+                        .font(.system(size: 11, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundColor(abs(d) <= 1.5 ? .green : (d > 0 ? .orange : .blue))
+                    Text(loopHint(d))
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("--")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            Text("控制量取 TC0P（CPU 附近），与目标温度同一尺度。")
+                .font(.system(size: 9))
+                .foregroundColor(Color.gray.opacity(0.85))
+        }
+    }
+
+    private func loopHint(_ d: Double) -> String {
+        if d > 1.5 { return "升温中，加速" }
+        if d < -1.5 { return "已达标，减速" }
+        return "稳定"
+    }
+
+    // MARK: - 我的
+
+    private var mineTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-
-                // 平滑过渡
-                VStack(alignment: .leading, spacing: 7) {
-                    Toggle(isOn: Binding(get: { model.smoothEnabled },
-                                         set: { model.smoothEnabled = $0 })) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("转速平滑过渡").font(.system(size: 11))
-                            Text("目标转速变化时逐步升降，避免风扇突然变速")
-                                .font(.system(size: 9))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-
-                    if model.smoothEnabled {
-                        HStack {
-                            Text("过渡速率")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text("\(Int(model.smoothRate)) RPM/秒")
-                                .font(.system(size: 10, weight: .medium))
-                                .monospacedDigit()
-                        }
-                        Slider(value: Binding(get: { model.smoothRate },
-                                              set: { model.smoothRate = $0 }),
-                               in: 100...1500, step: 50)
-
-                        HStack(spacing: 6) {
-                            Button("慢 250") { model.smoothRate = 250 }
-                                .controlSize(.mini)
-                            Button("标准 500") { model.smoothRate = 500 }
-                                .controlSize(.mini)
-                            Button("快 1000") { model.smoothRate = 1000 }
-                                .controlSize(.mini)
-                            Spacer()
-                        }
-
-                        Text(model.smoothTimeHint)
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                    }
-                }
-
+                versionBlock
                 Divider()
-
-                Toggle(isOn: Binding(get: { model.autostartEnabled },
-                                     set: { model.toggleAutostart($0) })) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("开机自动启动").font(.system(size: 11))
-                        Text("登录后自动运行，写入登录项")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-
                 statusBarSection
-
                 Divider()
-
-                // 版本与更新
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Text("版本")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                        Text(AppInfo.version)
-                            .font(.system(size: 10, weight: .medium))
-                            .monospacedDigit()
-                        Spacer()
-                        Button(updater.checking ? "检查中…" : "检查更新") {
-                            updater.check()
-                        }
-                        .controlSize(.mini)
-                        .disabled(updater.checking || updater.downloading)
-                    }
-
-                    Toggle(isOn: Binding(get: { updater.autoUpdate },
-                                         set: { updater.autoUpdate = $0 })) {
-                        Text("自动检查并后台下载更新")
-                            .font(.system(size: 10))
-                    }
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-
-                    Text(updater.message)
-                        .font(.system(size: 9))
-                        .foregroundColor(updater.readyToInstall ? .green : .secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if let err = updater.lastError {
-                        Text(err)
-                            .font(.system(size: 9))
-                            .foregroundColor(.orange)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Button("打开下载页") { updater.openReleasePage() }
-                            .controlSize(.mini)
-                    }
-
-                    if updater.readyToInstall {
-                        HStack(spacing: 8) {
-                            Button("重启并安装") { updater.installStaged() }
-                                .controlSize(.small)
-                            Button("打开下载页") { updater.openReleasePage() }
-                                .controlSize(.small)
-                            Spacer()
-                        }
-                    }
-                }
-
+                smoothSection
+                Divider()
+                autostartRow
                 settingsFooter
+            }
+        }
+    }
+
+    private var versionBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text("版本")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                Text(AppInfo.version)
+                    .font(.system(size: 11, weight: .medium))
+                    .monospacedDigit()
+                Spacer()
+                Button(updater.checking ? "检查中…" : "检查更新") {
+                    updater.check()
+                }
+                .controlSize(.mini)
+                .disabled(updater.checking || updater.downloading)
+            }
+
+            Toggle(isOn: Binding(get: { updater.autoUpdate },
+                                 set: { updater.autoUpdate = $0 })) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("自动检查并后台下载更新").font(.system(size: 10))
+                    Text("下好后才提示，不打断使用")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+
+            Text(updater.message)
+                .font(.system(size: 9))
+                .foregroundColor(updater.readyToInstall ? .green : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let err = updater.lastError {
+                Text(err)
+                    .font(.system(size: 9))
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if updater.readyToInstall {
+                HStack(spacing: 8) {
+                    Button("重启并安装") { updater.installStaged() }
+                        .controlSize(.small)
+                    Button("打开下载页") { updater.openReleasePage() }
+                        .controlSize(.small)
+                    Spacer()
+                }
+            } else if updater.lastError != nil {
+                Button("打开下载页") { updater.openReleasePage() }
+                    .controlSize(.mini)
             }
         }
     }
@@ -700,6 +679,20 @@ struct ContentView: View {
             Text("状态栏显示")
                 .font(.system(size: 10, weight: .medium))
 
+            Toggle(isOn: Binding(get: { model.menuShowNet },
+                                 set: { model.menuShowNet = $0 })) {
+                Text("网络速率").font(.system(size: 10))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+
+            Toggle(isOn: Binding(get: { model.menuShowTemp },
+                                 set: { model.menuShowTemp = $0 })) {
+                Text("温度").font(.system(size: 10))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+
             Toggle(isOn: Binding(get: { model.menuShowRPM },
                                  set: { model.menuShowRPM = $0 })) {
                 Text("风扇转速").font(.system(size: 10))
@@ -707,11 +700,64 @@ struct ContentView: View {
             .toggleStyle(.switch)
             .controlSize(.mini)
 
-            Toggle(isOn: Binding(get: { model.menuShowNet },
-                                 set: { model.menuShowNet = $0 })) {
+            unitRow("网速单位", selection: Binding(get: { model.netUnit },
+                                                 set: { model.netUnit = $0 }),
+                    cases: NetUnit.allCases.map { ($0.title, $0) })
+
+            unitRow("风速单位", selection: Binding(get: { model.fanUnit },
+                                                 set: { model.fanUnit = $0 }),
+                    cases: FanUnit.allCases.map { ($0.title, $0) })
+
+            HStack(spacing: 4) {
+                Text("当前")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                Text(barPreview)
+                    .font(.system(size: 9, weight: .medium))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                Spacer()
+            }
+        }
+    }
+
+    private var barPreview: String {
+        var s = ""
+        if model.menuShowNet { s += model.netText + "  " }
+        s += "风扇 "
+        if model.menuShowTemp { s += model.tempBarText + " " }
+        if model.menuShowRPM { s += model.rpmBarText }
+        return s
+    }
+
+    private func unitRow<T: Hashable & Identifiable>(_ title: String,
+                                                     selection: Binding<T>,
+                                                     cases: [(String, T)]) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+            Picker("", selection: selection) {
+                ForEach(cases, id: \.1) { item in
+                    Text(item.0).tag(item.1)
+                }
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.mini)
+            .labelsHidden()
+            Spacer()
+        }
+    }
+
+    // MARK: - 平滑过渡
+
+    private var smoothSection: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Toggle(isOn: Binding(get: { model.smoothEnabled },
+                                 set: { model.smoothEnabled = $0 })) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("网络速率").font(.system(size: 10))
-                    Text("显示在风扇图标左侧，宽度固定不抖动")
+                    Text("转速平滑过渡").font(.system(size: 11))
+                    Text("目标转速变化时逐步升降，避免突然变速")
                         .font(.system(size: 9))
                         .foregroundColor(.secondary)
                 }
@@ -719,35 +765,52 @@ struct ContentView: View {
             .toggleStyle(.switch)
             .controlSize(.mini)
 
-            HStack(spacing: 6) {
-                Text("单位")
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
-                Picker("", selection: Binding(get: { model.netUnit },
-                                              set: { model.netUnit = $0 })) {
-                    ForEach(NetUnit.allCases) { u in
-                        Text(u.title).tag(u)
-                    }
+            if model.smoothEnabled {
+                HStack {
+                    Text("过渡速率")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text("\(Int(model.smoothRate)) RPM/秒")
+                        .font(.system(size: 10, weight: .medium))
+                        .monospacedDigit()
                 }
-                .pickerStyle(.segmented)
-                .controlSize(.mini)
-                .frame(width: 168)
-                Spacer()
-            }
+                Slider(value: Binding(get: { model.smoothRate },
+                                      set: { model.smoothRate = $0 }),
+                       in: 100...1500, step: 50)
 
-            HStack(spacing: 4) {
-                Text("当前")
+                HStack(spacing: 6) {
+                    Button("慢 250") { model.smoothRate = 250 }
+                        .controlSize(.mini)
+                    Button("标准 500") { model.smoothRate = 500 }
+                        .controlSize(.mini)
+                    Button("快 1000") { model.smoothRate = 1000 }
+                        .controlSize(.mini)
+                    Spacer()
+                }
+
+                Text(model.smoothTimeHint)
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
-                Text(model.netText)
-                    .font(.system(size: 9, weight: .medium))
-                    .monospacedDigit()
-                Spacer()
             }
         }
     }
 
-    // MARK: - 设置页尾部（拆出，避免单个 ViewBuilder 超过 10 个子视图）
+    private var autostartRow: some View {
+        Toggle(isOn: Binding(get: { model.autostartEnabled },
+                             set: { model.toggleAutostart($0) })) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("开机自动启动").font(.system(size: 11))
+                Text("登录后自动运行，写入登录项")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .toggleStyle(.switch)
+        .controlSize(.mini)
+    }
+
+    // MARK: - 我的页尾部
 
     @ViewBuilder
     private var settingsFooter: some View {
@@ -767,6 +830,13 @@ struct ContentView: View {
             .controlSize(.small)
         }
 
+        if !model.helperReady, let err = model.lastError {
+            Text(err)
+                .font(.system(size: 9))
+                .foregroundColor(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
         Divider()
 
         HStack(spacing: 8) {
@@ -775,13 +845,6 @@ struct ContentView: View {
             Spacer()
             Button("退出") { model.quitSafely() }
                 .controlSize(.small)
-        }
-
-        if !model.helperReady, let err = model.lastError {
-            Text(err)
-                .font(.system(size: 9))
-                .foregroundColor(.orange)
-                .fixedSize(horizontal: false, vertical: true)
         }
 
         Text("退出或注销时会把风扇交还系统固件。若被强制结束进程，风扇会停在最后转速，重新打开后点「恢复系统自动」即可。")
@@ -801,6 +864,100 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - 风扇与传感器
+
+    private var fanDetail: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if model.fans.isEmpty {
+                Text("未检测到风扇")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(model.fans, id: \.i) { fan in
+                    HStack(spacing: 8) {
+                        Text("风扇 \(fan.i + 1)")
+                            .font(.system(size: 11, weight: .medium))
+                        Text(String(format: "%.0f – %.0f", fan.mn, fan.mx))
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(String(format: "目标 %.0f", fan.tg))
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                            .monospacedDigit()
+                        if model.isRamping, model.writtenRPM >= 0 {
+                            Text(String(format: "写入 %.0f", model.writtenRPM))
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(.blue)
+                                .monospacedDigit()
+                        }
+                        Text(fan.md != 0 ? "强制" : "自动")
+                            .font(.system(size: 9, weight: .medium))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(fan.md != 0 ? Color.orange.opacity(0.18)
+                                                    : Color.gray.opacity(0.14))
+                            .foregroundColor(fan.md != 0 ? .orange : .secondary)
+                            .cornerRadius(3)
+                    }
+                }
+            }
+        }
+    }
+
+    private var visibleTemps: [FStatus.T] {
+        let sorted = model.temps.sorted { $0.v > $1.v }
+        guard !showAllTemps else { return sorted }
+        var list = Array(sorted.prefix(4))
+        if let ctl = model.temps.first(where: { $0.k == "TC0P" }),
+           !list.contains(where: { $0.id == ctl.id }) {
+            list.append(ctl)
+        }
+        return list
+    }
+
+    private var tempSection: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text("温度传感器")
+                    .font(.system(size: 11, weight: .medium))
+                Spacer()
+                if model.temps.count > 4 {
+                    Button(showAllTemps ? "收起" : "全部 \(model.temps.count) 项") {
+                        showAllTemps.toggle()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10))
+                    .foregroundColor(.accentColor)
+                }
+            }
+            ForEach(visibleTemps) { t in
+                HStack(spacing: 6) {
+                    Text(t.n)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    if t.k == "TC0P" {
+                        Text("控制")
+                            .font(.system(size: 8))
+                            .foregroundColor(.accentColor)
+                    }
+                    Text(t.k)
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundColor(Color.gray.opacity(0.65))
+                    Text(String(format: "%.1f °C", t.v))
+                        .font(.system(size: 10, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundColor(t.v >= 90 ? Color.red
+                                         : t.v >= 78 ? Color.orange
+                                         : t.v <= 45 ? Color.blue
+                                         : Color.primary)
+                        .frame(width: 56, alignment: .trailing)
+                }
+            }
+        }
+    }
+
     // MARK: - 同步
 
     private func syncSlider() {
@@ -809,5 +966,91 @@ struct ContentView: View {
         } else {
             sliderRPM = model.manualRPM
         }
+    }
+}
+
+// MARK: - 定速滑杆
+
+/// 实心圆柱（白色）+ 刻度 + 无极变速。
+/// 拖动过程中只改显示值与 model.manualRPM，松手才下发，避免每像素写一次 SMC。
+struct SpeedSlider: View {
+
+    @Binding var value: Double
+    let maxValue: Double
+    var onEditing: (Bool) -> Void
+
+    private let knob: CGFloat = 20
+    private let trackH: CGFloat = 14
+
+    var body: some View {
+        VStack(spacing: 5) {
+            GeometryReader { geo in
+                let w = geo.size.width
+                let usable = max(1, w - knob)
+                let ratio = CGFloat(min(max(value, 0), maxValue) / max(maxValue, 1))
+                let cx = knob / 2 + usable * ratio
+
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white)
+                        .overlay(Capsule().stroke(Color.gray.opacity(0.30), lineWidth: 1))
+                        .frame(height: trackH)
+
+                    Capsule()
+                        .fill(Color.accentColor.opacity(0.85))
+                        .frame(width: max(trackH, cx), height: trackH)
+
+                    Circle()
+                        .fill(Color.white)
+                        .overlay(Circle().stroke(Color.gray.opacity(0.35), lineWidth: 1))
+                        .shadow(color: Color.black.opacity(0.18), radius: 2, y: 1)
+                        .frame(width: knob, height: knob)
+                        .offset(x: cx - knob / 2)
+                }
+                .frame(width: w, height: knob)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { g in
+                            let px = min(max(g.location.x - knob / 2, 0), usable)
+                            let v = Double(px / usable) * maxValue
+                            value = min(max(v.rounded(), 0), maxValue)
+                            onEditing(true)
+                        }
+                        .onEnded { _ in onEditing(false) }
+                )
+            }
+            .frame(height: knob)
+
+            tickRow
+        }
+    }
+
+    private var tickRow: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let usable = max(1, w - knob)
+            let step: Double = 1000
+            let count = Int(maxValue / step)
+
+            ZStack(alignment: .topLeading) {
+                ForEach(0...count, id: \.self) { i in
+                    let v = Double(i) * step
+                    let x = knob / 2 + usable * CGFloat(v / max(maxValue, 1))
+                    VStack(spacing: 1) {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.45))
+                            .frame(width: 1, height: 4)
+                        Text("\(Int(v))")
+                            .font(.system(size: 8))
+                            .foregroundColor(.secondary)
+                            .monospacedDigit()
+                            .fixedSize()
+                    }
+                    .position(x: min(max(x, 12), w - 12), y: 9)
+                }
+            }
+        }
+        .frame(height: 26)
     }
 }

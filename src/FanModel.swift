@@ -49,6 +49,22 @@ enum NetUnit: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - 风扇转速显示单位
+
+enum FanUnit: String, CaseIterable, Identifiable {
+    case rpm    // 6200
+    case kilo   // 6.2k
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .rpm:  return "RPM"
+        case .kilo: return "0.0k"
+        }
+    }
+}
+
 // MARK: - 曲线节点
 
 struct CurvePoint: Codable, Identifiable, Equatable {
@@ -100,6 +116,16 @@ final class FanModel: ObservableObject {
         didSet { defaults.set(netUnit.rawValue, forKey: Keys.netUnit) }
     }
 
+    /// 状态栏显示温度（默认打开）
+    @Published var menuShowTemp: Bool = true {
+        didSet { defaults.set(menuShowTemp, forKey: Keys.menuShowTemp) }
+    }
+
+    /// 转速显示单位
+    @Published var fanUnit: FanUnit = .rpm {
+        didSet { defaults.set(fanUnit.rawValue, forKey: Keys.fanUnit) }
+    }
+
     /// 转速平滑过渡（开关 + 速率设定 + 分步过渡）
     @Published var smoothEnabled: Bool = true {
         didSet {
@@ -144,6 +170,9 @@ final class FanModel: ObservableObject {
     private var curveSeeded = false
     private var cancellables = Set<AnyCancellable>()
 
+    /// 当前曲线来自哪个预设（0 = 手动/自定义）
+    @Published private(set) var presetLevel: Int = 0
+
     private enum Keys {
         static let mode          = "ifeng.mode"
         static let targetTemp    = "ifeng.targetTemp"
@@ -152,6 +181,8 @@ final class FanModel: ObservableObject {
         static let menuShowRPM   = "ifeng.menuShowRPM"
         static let menuShowNet   = "ifeng.menuShowNet"
         static let netUnit       = "ifeng.netUnit"
+        static let menuShowTemp  = "ifeng.menuShowTemp"
+        static let fanUnit       = "ifeng.fanUnit"
         static let smoothEnabled = "ifeng.smoothEnabled"
         static let smoothRate    = "ifeng.smoothRate"
     }
@@ -166,6 +197,8 @@ final class FanModel: ObservableObject {
         if d.object(forKey: Keys.menuShowRPM) != nil { menuShowRPM = d.bool(forKey: Keys.menuShowRPM) }
         if d.object(forKey: Keys.menuShowNet) != nil { menuShowNet = d.bool(forKey: Keys.menuShowNet) }
         if let raw = d.string(forKey: Keys.netUnit), let u = NetUnit(rawValue: raw) { netUnit = u }
+        if d.object(forKey: Keys.menuShowTemp) != nil { menuShowTemp = d.bool(forKey: Keys.menuShowTemp) }
+        if let raw = d.string(forKey: Keys.fanUnit), let u = FanUnit(rawValue: raw) { fanUnit = u }
         if d.object(forKey: Keys.smoothEnabled) != nil { smoothEnabled = d.bool(forKey: Keys.smoothEnabled) }
         if d.object(forKey: Keys.smoothRate) != nil { smoothRate = d.double(forKey: Keys.smoothRate) }
         loadCurve()
@@ -259,12 +292,17 @@ final class FanModel: ObservableObject {
 
     /// 图标右侧：温度与转速分开，便于各自固定宽度、互不挤动
     var tempBarText: String {
-        controlTemp.map { String(format: "%3.0f°", $0) } ?? " --°"
+        guard menuShowTemp else { return "" }
+        return controlTemp.map { String(format: "%3.0f°", $0) } ?? " --°"
     }
 
     var rpmBarText: String {
         let v = primaryRPM > 1 ? primaryRPM : lastKnownRPM
-        return v > 1 ? String(format: "%4d", Int(v.rounded())) : "  --"
+        guard v > 1 else { return "  --" }
+        switch fanUnit {
+        case .rpm:  return String(format: "%4d", Int(v.rounded()))
+        case .kilo: return String(format: "%4.1fk", v / 1000.0)
+        }
     }
 
     var targetDeviation: Double? {
@@ -356,6 +394,49 @@ final class FanModel: ObservableObject {
             }
         }
         return clamp(last.rpm)
+    }
+
+    // MARK: 曲线预设（1 / 2 / 3 档，自动生成 9–12 个节点）
+
+    /// 档位越高越激进：低档晚提速（安静），高档早提速（凉快）
+    func applyPreset(_ level: Int) {
+        let fanMin = fans.first.map { max($0.mn, 0) } ?? sliderRange.lowerBound
+        let fanMax = fans.first?.mx ?? sliderRange.upperBound
+        let span = max(200, fanMax - fanMin)
+
+        let count = level <= 1 ? 9 : (level == 2 ? 10 : 12)
+        let t0 = 38.0, t1 = 92.0
+
+        var pts: [CurvePoint] = []
+        for i in 0..<count {
+            let t = t0 + (t1 - t0) * Double(i) / Double(count - 1)
+            let x = (t - t0) / (t1 - t0)                     // 0…1
+            let shape: Double
+            switch level {
+            case 1:  shape = pow(x, 2.4)                     // 静音
+            case 2:  shape = pow(x, 1.5)                     // 均衡
+            default: shape = pow(x, 0.85)                    // 性能
+            }
+            let rpm = ((fanMin + span * shape) / 10).rounded() * 10
+            pts.append(CurvePoint(temp: t.rounded(), rpm: rpm))
+        }
+
+        curve = pts
+        curveSeeded = true
+        presetLevel = level
+        mode = .curve
+        applyNow()
+    }
+
+    /// 系统固件默认曲线的近似（仅用于画参考虚线，不参与实际控制）
+    var systemCurvePoints: [CurvePoint] {
+        let fanMin = fans.first?.mn ?? 1200
+        let fanMax = fans.first?.mx ?? 6200
+        let ts: [Double] = [40, 50, 60, 70, 78, 85, 92, 96]
+        let ns: [Double] = [0.0, 0.02, 0.10, 0.28, 0.52, 0.74, 0.92, 1.0]
+        return zip(ts, ns).map { t, n in
+            CurvePoint(temp: t, rpm: ((fanMin + (fanMax - fanMin) * n) / 50).rounded() * 50)
+        }
     }
 
     func addCurvePoint() {

@@ -39,7 +39,9 @@ enum BarImage {
             out.append(NSAttributedString(string: " ", attributes: body))
         }
 
-        out.append(NSAttributedString(string: temp, attributes: body))
+        if !temp.isEmpty {
+            out.append(NSAttributedString(string: temp, attributes: body))
+        }
 
         if let rpm = rpm, !rpm.isEmpty {
             out.append(NSAttributedString(string: " " + rpm, attributes: body))
