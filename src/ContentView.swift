@@ -731,7 +731,7 @@ struct ContentView: View {
                 }
                 .pickerStyle(.segmented)
                 .controlSize(.mini)
-                .frame(width: 116)
+                .frame(width: 168)
                 Spacer()
             }
 

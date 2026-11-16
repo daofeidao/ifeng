@@ -35,14 +35,16 @@ enum FanMode: String, CaseIterable, Identifiable {
 
 enum NetUnit: String, CaseIterable, Identifiable {
     case auto   // K / M 自适应
-    case mbs    // 固定 MB/s
+    case mbs2   // 固定 0.00 M/s
+    case mb1    // 固定 0.0 M
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .auto: return "自动"
-        case .mbs:  return "MB/s"
+        case .mbs2: return "0.00 M/s"
+        case .mb1:  return "0.0 M"
         }
     }
 }
@@ -246,8 +248,10 @@ final class FanModel: ObservableObject {
             if kb < 1000 { return String(format: "%4.0fK", kb) }
             let mb = kb / 1024.0
             return mb < 100 ? String(format: "%4.1fM", mb) : String(format: "%4.0fM", mb)
-        case .mbs:
-            return String(format: "%5.1fM/s", v / 1_048_576.0)
+        case .mbs2:
+            return String(format: "%5.2fM/s", v / 1_048_576.0)
+        case .mb1:
+            return String(format: "%5.1fM", v / 1_048_576.0)
         }
     }
 
