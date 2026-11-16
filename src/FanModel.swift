@@ -238,29 +238,26 @@ final class FanModel: ObservableObject {
         "↑\(netValueText(netUp)) ↓\(netValueText(netDown))"
     }
 
+    /// 定长输出：宽度固定，网速跳动时菜单栏不会左右晃
     private func netValueText(_ v: Double) -> String {
         switch netUnit {
-        case .auto: return NetMonitor.format(v)
-        case .mbs:  return String(format: "%.1fM/s", v / 1_048_576.0)
+        case .auto:
+            let kb = v / 1024.0
+            if kb < 1000 { return String(format: "%4.0fK", kb) }
+            let mb = kb / 1024.0
+            return mb < 100 ? String(format: "%4.1fM", mb) : String(format: "%4.0fM", mb)
+        case .mbs:
+            return String(format: "%5.1fM/s", v / 1_048_576.0)
         }
     }
 
     /// 图标右侧：温度与转速分开，便于各自固定宽度、互不挤动
     var tempBarText: String {
-        controlTemp.map { String(format: "%.0f°", $0) } ?? "--°"
+        controlTemp.map { String(format: "%3.0f°", $0) } ?? " --°"
     }
 
     var rpmBarText: String {
-        primaryRPM > 0 ? "\(Int(primaryRPM.rounded()))" : "--"
-    }
-
-    /// 菜单栏整条的宽度（显式指定，否则 NSStatusItem 会按「图标+文字」估算，
-    /// 把我们用 frame 撑开的各段居中裁掉）
-    var barWidth: CGFloat {
-        var w: CGFloat = 16 + 30          // 图标 + 温度
-        if menuShowNet { w += 104 + 3 }   // 网速 + 间距
-        if menuShowRPM { w += 32 + 3 }    // 转速 + 间距
-        return w
+        primaryRPM > 0 ? String(format: "%4d", Int(primaryRPM.rounded())) : "  --"
     }
 
     var targetDeviation: Double? {

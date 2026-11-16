@@ -11,32 +11,14 @@ struct IFengApp: App {
         MenuBarExtra {
             ContentView(model: model, updater: model.updater)
         } label: {
+            // 整条自己排版后画成一张图交给系统。
             // 顺序：网速 → 风扇图标 → 温度 → 转速
-            // 注意：这里不能写 if 分支。MenuBarExtra 的 label 里用 if 会让子视图错位、
-            // 甚至整段被吞掉（实测：温度和转速消失、网速跑到图标右侧）。
-            // 改用「始终存在的 Text + 宽度控制显隐」，布局才是稳定的。
-            HStack(spacing: 3) {
-                Text(model.menuShowNet ? model.netText : "")
-                    .font(.system(size: 10.5, weight: .medium))
-                    .monospacedDigit()
-                    .frame(width: model.menuShowNet ? 104 : 0, alignment: .trailing)
-                    .lineLimit(1)
-
-                Image(systemName: "fanblades.fill")
-
-                Text(model.tempBarText)
-                    .font(.system(size: 11, weight: .medium))
-                    .monospacedDigit()
-                    .frame(width: 30, alignment: .trailing)
-                    .lineLimit(1)
-
-                Text(model.menuShowRPM ? model.rpmBarText : "")
-                    .font(.system(size: 11, weight: .medium))
-                    .monospacedDigit()
-                    .frame(width: model.menuShowRPM ? 32 : 0, alignment: .trailing)
-                    .lineLimit(1)
-            }
-            .frame(width: model.barWidth, alignment: .trailing)
+            // （MenuBarExtra 的 label 只渲染一个 Text，多视图会被丢弃，见 StatusBar.swift）
+            Image(nsImage: BarImage.make(
+                net: model.menuShowNet ? model.netText : nil,
+                temp: model.tempBarText,
+                rpm: model.menuShowRPM ? model.rpmBarText : nil
+            ))
         }
         .menuBarExtraStyle(.window)
     }

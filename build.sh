@@ -15,9 +15,9 @@ cd "$(dirname "$0")"
 APP="build/风扇控制.app"
 BIN="iFeng"
 ARCH="$(uname -m)"
-VERSION="1.2.7"
+VERSION="1.2.8"
 UNIVERSAL="${UNIVERSAL:-0}"
-SOURCES="src/App.swift src/Fanctl.swift src/FanModel.swift src/ContentView.swift src/Updater.swift src/NetMonitor.swift"
+SOURCES="src/App.swift src/Fanctl.swift src/FanModel.swift src/ContentView.swift src/Updater.swift src/NetMonitor.swift src/StatusBar.swift"
 
 echo "==> 环境检查"
 if ! command -v clang >/dev/null 2>&1; then

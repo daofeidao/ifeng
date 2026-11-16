@@ -547,7 +547,7 @@ static void cmdDiag(void)
     char t[5];
     int ok = 0;
 
-    printf("fanctl 1.2.7\n");
+    printf("fanctl 1.2.8\n");
     printf("euid : %d (%s)\n", (int)geteuid(),
            geteuid() == 0 ? "root，可写 SMC" : "普通用户，可能只能读取");
     if (readVal("FNum", &v) == 0) {
@@ -594,7 +594,7 @@ static void cmdDiag(void)
 static void usage(void)
 {
     fprintf(stderr,
-        "fanctl 1.2.7  —— Intel Mac 风扇控制\n"
+        "fanctl 1.2.8  —— Intel Mac 风扇控制\n"
         "  fanctl list               输出风扇/温度 JSON\n"
         "  fanctl set <fan> <rpm>    强制转速（fan 从 0 开始）\n"
         "  fanctl auto [fan|all]     恢复系统自动控制\n"
@@ -612,7 +612,7 @@ int main(int argc, char **argv)
     if (argc < 2) { usage(); return 2; }
 
     if (!strcmp(argv[1], "version")) {
-        printf("fanctl 1.2.7\n");
+        printf("fanctl 1.2.8\n");
         return 0;
     }
     if (!strcmp(argv[1], "help") || !strcmp(argv[1], "-h") ||
