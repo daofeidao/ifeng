@@ -295,6 +295,56 @@ static int writeDouble(const char *key, double value)
     return 0;
 }
 
+/* ---------------- 风扇强制位 -----------------
+ * 新机型（约 2013+）用 F<idx>Md：1 = 强制，0 = 自动。
+ * 老机型（2011 及更早，如 MacBookPro8,x）没有 F<idx>Md 这个键，
+ * 强制位在 FS! —— 一个 ui16 位掩码，bit N 对应第 N 个风扇。
+ * 老机器上只写 F0Tg（目标转速）不写 FS! 的话，系统 SMC 会立刻
+ * 覆盖回去，表现为「能读数、能改目标值，但转速完全不受控」。
+ */
+
+static int keyUsable(const char *key, SMCVal_t *v)
+{
+    if (readVal(key, v) != 0) return 0;
+    return v->dataSize > 0 && v->dataType != 0;
+}
+
+static int forcedState(int fan)
+{
+    char kMd[8];
+    SMCVal_t v;
+
+    snprintf(kMd, sizeof(kMd), "F%dMd", fan);
+    if (keyUsable(kMd, &v))
+        return decodeValue(v.dataType, v.bytes) != 0 ? 1 : 0;
+
+    if (keyUsable("FS! ", &v) && v.dataSize >= 2)
+        return (int)((be16(v.bytes) >> fan) & 1);
+    return 0;
+}
+
+static int setForced(int fan, int on)
+{
+    char kMd[8];
+    SMCVal_t v;
+    UInt16 cur, nv;
+    UInt8 buf[2];
+
+    snprintf(kMd, sizeof(kMd), "F%dMd", fan);
+    if (keyUsable(kMd, &v))
+        return writeDouble(kMd, on ? 1.0 : 0.0) == 0 ? 0 : -3;
+
+    /* 老机型：读-改-写 FS! 的对应 bit，别踩掉其它风扇的位 */
+    if (!keyUsable("FS! ", &v) || v.dataSize < 2) return -1;
+
+    cur = be16(v.bytes);
+    nv = on ? (UInt16)(cur | (1u << fan)) : (UInt16)(cur & ~(1u << fan));
+    buf[0] = (UInt8)(nv >> 8);
+    buf[1] = (UInt8)(nv & 0xff);
+    if (smcWrite(str2key("FS! "), 2, buf) != kIOReturnSuccess) return -3;
+    return 0;
+}
+
 /* ---------------------------- 温度传感器 ---------------------------- */
 
 typedef struct { const char *key; const char *name; } TempKey;
@@ -342,14 +392,15 @@ static void cmdList(void)
            geteuid() == 0 ? "true" : "false", (int)getpid());
 
     for (i = 0; i < n; i++) {
-        int okAc = 0, okMn = 0, okMx = 0, okTg = 0, okMd = 0;
-        double ac, mn, mx, tg, md;
+        int okAc = 0, okMn = 0, okMx = 0, okTg = 0;
+        double ac, mn, mx, tg;
+        int md;
 
         snprintf(k, sizeof(k), "F%dAc", i); ac = readDouble(k, &okAc);
         snprintf(k, sizeof(k), "F%dMn", i); mn = readDouble(k, &okMn);
         snprintf(k, sizeof(k), "F%dMx", i); mx = readDouble(k, &okMx);
         snprintf(k, sizeof(k), "F%dTg", i); tg = readDouble(k, &okTg);
-        snprintf(k, sizeof(k), "F%dMd", i); md = readDouble(k, &okMd);
+        md = forcedState(i);
 
         if (!okMn || mn <= 0) mn = 1200;
         if (!okMx || mx <= 0) mx = 6200;
@@ -378,7 +429,7 @@ static void cmdList(void)
 
 static int cmdSet(int fan, double want)
 {
-    char kAc[8], kMn[8], kMx[8], kTg[8], kMd[8];
+    char kAc[8], kMn[8], kMx[8], kTg[8];
     int ok = 0, e1, e2;
     double mn, mx, ac, tg;
 
@@ -391,19 +442,21 @@ static int cmdSet(int fan, double want)
     snprintf(kMn, sizeof(kMn), "F%dMn", fan);
     snprintf(kMx, sizeof(kMx), "F%dMx", fan);
     snprintf(kTg, sizeof(kTg), "F%dTg", fan);
-    snprintf(kMd, sizeof(kMd), "F%dMd", fan);
 
     mn = readDouble(kMn, &ok);
     if (!ok || mn <= 0) mn = 1200;
     mx = readDouble(kMx, &ok);
     if (!ok || mx <= 0) mx = 6200;
 
-    if (want < mn) want = mn;
+    /* 下限放到 0：允许用户手动关停风扇。
+     * 低于硬件 F0Mn 的请求是否真正生效由 SMC 自行决定（多数机型会夹取）。 */
+    if (want < 0) want = 0;
     if (want > mx) want = mx;
+    (void)mn;
 
     /* 顺序：先给目标值，再置强制位，避免瞬间跳转到旧目标 */
     e1 = writeDouble(kTg, want);
-    e2 = writeDouble(kMd, 1);
+    e2 = setForced(fan, 1);
 
     usleep(120000);
 
@@ -423,12 +476,10 @@ static int cmdSet(int fan, double want)
 static int cmdAuto(int fan)
 {
     int i, n, e;
-    char k[8];
     int allOk = 1;
 
     if (fan >= 0) {
-        snprintf(k, sizeof(k), "F%dMd", fan);
-        e = writeDouble(k, 0);
+        e = setForced(fan, 0);
         if (e != 0) allOk = 0;
         printf("{\"ok\":%s,\"i\":%d,\"err\":\"%s\"}\n",
                e == 0 ? "true" : "false", fan,
@@ -438,8 +489,7 @@ static int cmdAuto(int fan)
 
     n = fanCount();
     for (i = 0; i < n; i++) {
-        snprintf(k, sizeof(k), "F%dMd", i);
-        if (writeDouble(k, 0) != 0) allOk = 0;
+        if (setForced(i, 0) != 0) allOk = 0;
     }
     printf("{\"ok\":%s,\"fans\":%d,\"err\":\"%s\"}\n",
            allOk ? "true" : "false", n,
@@ -497,7 +547,7 @@ static void cmdDiag(void)
     char t[5];
     int ok = 0;
 
-    printf("fanctl 1.0.0\n");
+    printf("fanctl 1.2.0\n");
     printf("euid : %d (%s)\n", (int)geteuid(),
            geteuid() == 0 ? "root，可写 SMC" : "普通用户，可能只能读取");
     if (readVal("FNum", &v) == 0) {
@@ -507,9 +557,32 @@ static void cmdDiag(void)
     } else {
         printf("FNum : 读取失败\n");
     }
+
+    /* 强制位：新机型 F<idx>Md；老机型（2011 及更早）没有这个键，走 FS! 位掩码 */
+    if (keyUsable("F0Md", &v)) {
+        key2str(v.dataType, t);
+        printf("F0Md : 存在 (type=%s size=%u) 值=%.1f\n",
+               t, (unsigned)v.dataSize, decodeValue(v.dataType, v.bytes));
+    } else {
+        printf("F0Md : 不存在 —— 老机型，强制位改走 FS! \n");
+    }
+    if (keyUsable("FS! ", &v) && v.dataSize >= 2) {
+        printf("FS!  : 存在，位掩码 0x%04x (bit0=%d)\n",
+               (unsigned)be16(v.bytes), (int)((be16(v.bytes) >> 0) & 1));
+    } else {
+        printf("FS!  : 不存在 —— 强制位无处可写\n");
+    }
+    printf("强制位 : %s\n", forcedState(0) ? "ON（转速已锁定）"
+                                           : "OFF（系统自动控制）");
+
     if (readVal("F0Tg", &v) == 0) {
         key2str(v.dataType, t);
         printf("F0Tg 类型 : %s  当前目标 : %.1f\n",
+               t, decodeValue(v.dataType, v.bytes));
+    }
+    if (readVal("F0Ac", &v) == 0) {
+        key2str(v.dataType, t);
+        printf("F0Ac 类型 : %s  实际转速 : %.1f\n",
                t, decodeValue(v.dataType, v.bytes));
     }
     printf("TC0P : %.1f C\n", readDouble("TC0P", &ok));
@@ -521,7 +594,7 @@ static void cmdDiag(void)
 static void usage(void)
 {
     fprintf(stderr,
-        "fanctl 1.0.0  —— Intel Mac 风扇控制\n"
+        "fanctl 1.2.0  —— Intel Mac 风扇控制\n"
         "  fanctl list               输出风扇/温度 JSON\n"
         "  fanctl set <fan> <rpm>    强制转速（fan 从 0 开始）\n"
         "  fanctl auto [fan|all]     恢复系统自动控制\n"
@@ -539,7 +612,7 @@ int main(int argc, char **argv)
     if (argc < 2) { usage(); return 2; }
 
     if (!strcmp(argv[1], "version")) {
-        printf("fanctl 1.0.0\n");
+        printf("fanctl 1.2.0\n");
         return 0;
     }
     if (!strcmp(argv[1], "help") || !strcmp(argv[1], "-h") ||

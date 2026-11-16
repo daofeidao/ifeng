@@ -15,9 +15,9 @@ cd "$(dirname "$0")"
 APP="build/风扇控制.app"
 BIN="iFeng"
 ARCH="$(uname -m)"
-VERSION="1.1.0"
+VERSION="1.2.0"
 UNIVERSAL="${UNIVERSAL:-0}"
-SOURCES="src/App.swift src/Fanctl.swift src/FanModel.swift src/ContentView.swift src/Updater.swift"
+SOURCES="src/App.swift src/Fanctl.swift src/FanModel.swift src/ContentView.swift src/Updater.swift src/NetMonitor.swift"
 
 echo "==> 环境检查"
 if ! command -v clang >/dev/null 2>&1; then
@@ -69,6 +69,21 @@ echo "==> 内嵌 fanctl 到 App 资源（供「一键启用」使用）"
 cp build/fanctl "$APP/Contents/Resources/fanctl"
 chmod 755 "$APP/Contents/Resources/fanctl"
 echo "    已嵌入 $(du -h "$APP/Contents/Resources/fanctl" | awk '{print $1}')"
+
+if [ -f assets/icon-1024.png ]; then
+    echo "==> 生成 AppIcon.icns"
+    ICONSET="build/AppIcon.iconset"
+    rm -rf "$ICONSET"
+    mkdir -p "$ICONSET"
+    for s in 16 32 128 256 512; do
+        sips -z "$s" "$s" assets/icon-1024.png --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
+        sips -z "$((s * 2))" "$((s * 2))" assets/icon-1024.png --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
+    done
+    iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+    echo "    OK -> AppIcon.icns ($(du -h "$APP/Contents/Resources/AppIcon.icns" | awk '{print $1}'))"
+else
+    echo "==> 跳过图标（assets/icon-1024.png 不存在）"
+fi
 
 echo "==> ad-hoc 签名（必须在嵌入资源之后）"
 if codesign --force --deep --sign - "$APP" 2>/dev/null; then

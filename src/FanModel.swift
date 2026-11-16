@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Combine
 
 // MARK: - 模式
 
@@ -71,6 +72,11 @@ final class FanModel: ObservableObject {
         didSet { defaults.set(menuShowRPM, forKey: Keys.menuShowRPM) }
     }
 
+    /// 状态栏显示网速（默认打开）
+    @Published var menuShowNet: Bool = true {
+        didSet { defaults.set(menuShowNet, forKey: Keys.menuShowNet) }
+    }
+
     /// 转速平滑过渡（开关 + 速率设定 + 分步过渡）
     @Published var smoothEnabled: Bool = true {
         didSet {
@@ -91,9 +97,15 @@ final class FanModel: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var autostartEnabled = Autostart.isEnabled
     @Published private(set) var lastUpdate = Date.distantPast
+    /// 最近一次真正写入 SMC 的目标转速（平滑过渡时会在目标与当前之间移动）
+    @Published private(set) var writtenRPM: Double = -1
+    /// 网速镜像值（让菜单栏与面板随网速刷新）
+    @Published private(set) var netUp: Double = 0
+    @Published private(set) var netDown: Double = 0
 
     private let defaults = UserDefaults.standard
     let updater = Updater()
+    let net = NetMonitor()
     private let ioQueue = DispatchQueue(label: "com.local.ifeng.io")
     private var timer: Timer?
     private var tickCount = 0
@@ -105,6 +117,7 @@ final class FanModel: ObservableObject {
     private var lastApplyTime = Date.distantPast
     private var loopRPM: Double = 0            // 恒温闭环内部状态
     private var curveSeeded = false
+    private var cancellables = Set<AnyCancellable>()
 
     private enum Keys {
         static let mode          = "ifeng.mode"
@@ -112,6 +125,7 @@ final class FanModel: ObservableObject {
         static let manualRPM     = "ifeng.manualRPM"
         static let curve         = "ifeng.curve"
         static let menuShowRPM   = "ifeng.menuShowRPM"
+        static let menuShowNet   = "ifeng.menuShowNet"
         static let smoothEnabled = "ifeng.smoothEnabled"
         static let smoothRate    = "ifeng.smoothRate"
     }
@@ -124,6 +138,7 @@ final class FanModel: ObservableObject {
         if d.object(forKey: Keys.targetTemp) != nil { targetTemp = d.double(forKey: Keys.targetTemp) }
         if d.object(forKey: Keys.manualRPM) != nil { manualRPM = d.double(forKey: Keys.manualRPM) }
         if d.object(forKey: Keys.menuShowRPM) != nil { menuShowRPM = d.bool(forKey: Keys.menuShowRPM) }
+        if d.object(forKey: Keys.menuShowNet) != nil { menuShowNet = d.bool(forKey: Keys.menuShowNet) }
         if d.object(forKey: Keys.smoothEnabled) != nil { smoothEnabled = d.bool(forKey: Keys.smoothEnabled) }
         if d.object(forKey: Keys.smoothRate) != nil { smoothRate = d.double(forKey: Keys.smoothRate) }
         loadCurve()
@@ -136,6 +151,16 @@ final class FanModel: ObservableObject {
 
         refresh()
         updater.bootstrap()
+        net.start()
+
+        // 网速是独立对象，镜像到自身才能驱动菜单栏与面板刷新
+        net.$upBytesPerSec
+            .combineLatest(net.$downBytesPerSec)
+            .sink { [weak self] up, down in
+                self?.netUp = up
+                self?.netDown = down
+            }
+            .store(in: &cancellables)
 
         // 0.25 秒基准节拍：平滑过渡每拍走一步，每 8 拍（2 秒）读一次 SMC
         let t = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -161,21 +186,28 @@ final class FanModel: ObservableObject {
 
     var primaryRPM: Double { fans.first?.ac ?? 0 }
 
+    /// 硬件真实下限 / 上限
+    var fanMin: Double { fans.first?.mn ?? 1200 }
+    var fanMax: Double { fans.first?.mx ?? 6200 }
+
+    /// 可调范围：下限放到 0，允许手动关停（能否真正停转由 SMC 决定）
     var sliderRange: ClosedRange<Double> {
-        let mn = fans.first?.mn ?? 1200
-        let mx = fans.first?.mx ?? 6200
-        return mn...max(mn + 200, mx)
+        return 0...max(fanMax, 1000)
     }
 
     var isForcing: Bool { fans.contains { $0.md != 0 } }
 
-    /// 菜单栏文本：温度必显，转速可选
+    /// 菜单栏文本：温度必显，转速 / 网速可选
     var menuBarText: String {
-        let t = maxTemp.map { String(format: "%.0f°", $0) } ?? "--°"
+        var parts: [String] = []
+        parts.append(maxTemp.map { String(format: "%.0f°", $0) } ?? "--°")
         if menuShowRPM, primaryRPM > 0 {
-            return "\(t) \(Int(primaryRPM.rounded()))"
+            parts.append("\(Int(primaryRPM.rounded()))")
         }
-        return t
+        if menuShowNet {
+            parts.append("↑\(NetMonitor.format(netUp)) ↓\(NetMonitor.format(netDown))")
+        }
+        return parts.joined(separator: " ")
     }
 
     var targetDeviation: Double? {
@@ -202,7 +234,8 @@ final class FanModel: ObservableObject {
 
     /// 是否正在平滑过渡中
     var isRamping: Bool {
-        smoothEnabled && pendingTarget > 0 && abs(pendingTarget - lastWrittenRPM) >= 15
+        guard smoothEnabled, pendingTarget >= 0, writtenRPM >= 0 else { return false }
+        return abs(pendingTarget - writtenRPM) >= 15
     }
 
     // MARK: 数据刷新
@@ -371,6 +404,15 @@ final class FanModel: ObservableObject {
         applyNow()
     }
 
+    /// 平滑起点：优先取风扇当前实际转速，其次取上次写入值。
+    /// 之前直接用 lastWrittenRPM，而刚离开「自动」模式时它是 -1，
+    /// 于是平滑起点被设成目标值本身 —— 差值恒为 0，速率设置自然毫无效果。
+    private func rampSeed() -> Double {
+        if let f = fans.first, f.ac > 1 { return f.ac }
+        if lastWrittenRPM >= 0 { return lastWrittenRPM }
+        return pendingTarget >= 0 ? pendingTarget : 0
+    }
+
     /// 按当前模式把目标下发；开启平滑时由 rampStep 逐步逼近
     func applyNow() {
         guard mode != .auto else { return }
@@ -378,7 +420,7 @@ final class FanModel: ObservableObject {
         pendingTarget = target
 
         if smoothEnabled {
-            if rampRPM < 0 { rampRPM = lastWrittenRPM > 0 ? lastWrittenRPM : target }
+            if rampRPM < 0 { rampRPM = rampSeed() }
         } else {
             writeAllAsync(target)
         }
@@ -387,16 +429,11 @@ final class FanModel: ObservableObject {
     private func enforcePolicy() {
         guard mode != .auto, !fans.isEmpty else { return }
 
-        // 首次进入非自动模式时，以风扇当前实际转速为平滑起点，避免一上来就跳变
-        if lastWrittenRPM < 0, let f = fans.first {
-            lastWrittenRPM = f.tg > 0 ? f.tg : f.ac
-        }
-
         let target = desiredRPM(advance: true)
         pendingTarget = target
 
         guard !smoothEnabled else {
-            if rampRPM < 0 { rampRPM = lastWrittenRPM > 0 ? lastWrittenRPM : target }
+            if rampRPM < 0 { rampRPM = rampSeed() }
             return
         }
 
@@ -408,8 +445,8 @@ final class FanModel: ObservableObject {
 
     /// 平滑推进：每个 0.25 秒节拍最多走 rate × dt 转
     private func rampStep() {
-        guard pendingTarget > 0, !fans.isEmpty else { return }
-        if rampRPM < 0 { rampRPM = lastWrittenRPM > 0 ? lastWrittenRPM : pendingTarget }
+        guard pendingTarget >= 0, !fans.isEmpty else { return }
+        if rampRPM < 0 { rampRPM = rampSeed() }
 
         let dt = 0.25
         let maxStep = max(10, smoothRate * dt)
@@ -424,13 +461,13 @@ final class FanModel: ObservableObject {
         next = (clamp(next) / 10).rounded() * 10
         rampRPM = next
 
-        guard abs(next - lastWrittenRPM) >= 15 else { return }
+        guard abs(next - lastWrittenRPM) >= 10 else { return }
         writeAllAsync(next)
     }
 
     /// 关闭平滑时把目标一次性写下去
     private func flushSmooth() {
-        guard pendingTarget > 0 else { return }
+        guard pendingTarget >= 0 else { return }
         rampRPM = pendingTarget
         writeAllAsync(pendingTarget)
     }
@@ -438,6 +475,7 @@ final class FanModel: ObservableObject {
     private func writeAllAsync(_ rpm: Double) {
         let list = fans
         lastWrittenRPM = rpm
+        writtenRPM = rpm
         lastApplyTime = Date()
         ioQueue.async {
             var targets = list

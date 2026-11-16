@@ -276,6 +276,12 @@ struct ContentView: View {
                             .font(.system(size: 9))
                             .foregroundColor(.secondary)
                             .monospacedDigit()
+                        if model.isRamping, model.writtenRPM >= 0 {
+                            Text(String(format: "写入 %.0f", model.writtenRPM))
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(.blue)
+                                .monospacedDigit()
+                        }
                         Text(fan.md != 0 ? "强制" : "自动")
                             .font(.system(size: 9, weight: .medium))
                             .padding(.horizontal, 5)
@@ -451,8 +457,11 @@ struct ContentView: View {
                 ForEach(pts) { pt in
                     Circle()
                         .fill(Color.accentColor)
-                        .frame(width: dragID == pt.id ? 11 : 7,
-                               height: dragID == pt.id ? 11 : 7)
+                        .frame(width: dragID == pt.id ? 18 : 13,
+                               height: dragID == pt.id ? 18 : 13)
+                        .overlay(
+                            Circle().stroke(Color.white.opacity(0.9), lineWidth: 1.5)
+                        )
                         .position(x: px(pt.temp, w), y: py(pt.rpm, h, r))
                 }
 
@@ -487,7 +496,7 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(height: 150)
+        .frame(height: 172)
         .background(Color.gray.opacity(0.07))
         .cornerRadius(6)
         .overlay(
@@ -505,7 +514,7 @@ struct ContentView: View {
 
         if dragID == nil {
             var bestID: UUID? = nil
-            var bestDist: CGFloat = 900    // 30pt 半径的平方
+            var bestDist: CGFloat = 2200    // 约 47pt 半径的平方，容错更大
             for p in pts {
                 let dx = px(p.temp, size.width) - loc.x
                 let dy = py(p.rpm, size.height, r) - loc.y
@@ -610,17 +619,7 @@ struct ContentView: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
 
-                Toggle(isOn: Binding(get: { model.menuShowRPM },
-                                     set: { model.menuShowRPM = $0 })) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("状态栏同时显示转速").font(.system(size: 11))
-                        Text("关闭后只显示温度")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .toggleStyle(.switch)
-                .controlSize(.mini)
+                statusBarSection
 
                 Divider()
 
@@ -665,45 +664,90 @@ struct ContentView: View {
                     }
                 }
 
-                Divider()
-
-                VStack(alignment: .leading, spacing: 4) {
-                    infoRow("辅助工具", model.helperReady ? "正常" : "未启用")
-                    infoRow("风扇数量", "\(model.fans.count)")
-                    infoRow("控制状态", model.isForcing ? "已接管（强制）" : "系统自动")
-                    infoRow("当前模式", model.mode.title)
-                }
-
-                if !model.helperReady {
-                    Button("一键启用风扇写入（弹一次密码框）") {
-                        model.requestHelperInstall()
-                    }
-                    .controlSize(.small)
-                }
-
-                Divider()
-
-                HStack(spacing: 8) {
-                    Button("恢复系统自动") { model.restoreAuto() }
-                        .controlSize(.small)
-                    Spacer()
-                    Button("退出") { model.quitSafely() }
-                        .controlSize(.small)
-                }
-
-                if !model.helperReady, let err = model.lastError {
-                    Text(err)
-                        .font(.system(size: 9))
-                        .foregroundColor(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Text("退出或注销时会把风扇交还系统固件。若被强制结束进程，风扇会停在最后转速，重新打开后点「恢复系统自动」即可。")
-                    .font(.system(size: 9))
-                    .foregroundColor(Color.gray.opacity(0.85))
-                    .fixedSize(horizontal: false, vertical: true)
+                settingsFooter
             }
         }
+    }
+
+    // MARK: - 状态栏显示项
+
+    private var statusBarSection: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("状态栏显示")
+                .font(.system(size: 10, weight: .medium))
+
+            Toggle(isOn: Binding(get: { model.menuShowRPM },
+                                 set: { model.menuShowRPM = $0 })) {
+                Text("风扇转速").font(.system(size: 10))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+
+            Toggle(isOn: Binding(get: { model.menuShowNet },
+                                 set: { model.menuShowNet = $0 })) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("网络速率").font(.system(size: 10))
+                    Text("↑ 上传　↓ 下载，单位自适应 K / M")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+
+            HStack(spacing: 4) {
+                Text("当前")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                Text("↑ \(NetMonitor.format(model.netUp))  ↓ \(NetMonitor.format(model.netDown))")
+                    .font(.system(size: 9, weight: .medium))
+                    .monospacedDigit()
+                Spacer()
+            }
+        }
+    }
+
+    // MARK: - 设置页尾部（拆出，避免单个 ViewBuilder 超过 10 个子视图）
+
+    @ViewBuilder
+    private var settingsFooter: some View {
+        Divider()
+
+        VStack(alignment: .leading, spacing: 4) {
+            infoRow("辅助工具", model.helperReady ? "正常" : "未启用")
+            infoRow("风扇数量", "\(model.fans.count)")
+            infoRow("控制状态", model.isForcing ? "已接管（强制）" : "系统自动")
+            infoRow("当前模式", model.mode.title)
+        }
+
+        if !model.helperReady {
+            Button("一键启用风扇写入（弹一次密码框）") {
+                model.requestHelperInstall()
+            }
+            .controlSize(.small)
+        }
+
+        Divider()
+
+        HStack(spacing: 8) {
+            Button("恢复系统自动") { model.restoreAuto() }
+                .controlSize(.small)
+            Spacer()
+            Button("退出") { model.quitSafely() }
+                .controlSize(.small)
+        }
+
+        if !model.helperReady, let err = model.lastError {
+            Text(err)
+                .font(.system(size: 9))
+                .foregroundColor(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        Text("退出或注销时会把风扇交还系统固件。若被强制结束进程，风扇会停在最后转速，重新打开后点「恢复系统自动」即可。")
+            .font(.system(size: 9))
+            .foregroundColor(Color.gray.opacity(0.85))
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func infoRow(_ key: String, _ value: String) -> some View {
