@@ -8,7 +8,7 @@ struct ContentView: View {
 
     @State private var tab: Int = 0
     @State private var sliderRPM: Double = 3000
-    @State private var showAllTemps = false
+    @State private var showAllTemps = true
     @State private var dragID: UUID? = nil
 
     var body: some View {
@@ -88,7 +88,7 @@ struct ContentView: View {
                     .foregroundColor(.secondary)
             }
             VStack(alignment: .leading, spacing: 0) {
-                Text("CPU 附近")
+                Text(model.controlSensorName)
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
                 Text(model.statusColorHint)
@@ -597,7 +597,7 @@ struct ContentView: View {
                         .foregroundColor(.secondary)
                 }
             }
-            Text("控制量取 TC0P（CPU 附近），与目标温度同一尺度。")
+            Text("控制量取 \(model.controlSensorKey)（\(model.controlSensorName)），可在下方传感器列表点「设控制」更换。")
                 .font(.system(size: 9))
                 .foregroundColor(Color.gray.opacity(0.85))
         }
@@ -957,11 +957,19 @@ struct ContentView: View {
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
                     Spacer()
-                    if t.k == "TC0P" {
-                        Text("控制")
-                            .font(.system(size: 8))
-                            .foregroundColor(.accentColor)
-                    }
+                    // 点击把该传感器设为控制量（恒温/曲线/状态栏温度都跟着它走）
+                    let selected = t.k == model.controlSensorKey
+                    Text(selected ? "控制中" : "设控制")
+                        .font(.system(size: 8, weight: selected ? .semibold : .regular))
+                        .foregroundColor(selected ? Color.white : Color.accentColor)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(
+                            Capsule().fill(selected ? Color.accentColor
+                                                    : Color.accentColor.opacity(0.12))
+                        )
+                        .contentShape(Capsule())
+                        .onTapGesture { model.controlSensorKey = t.k }
                     Text(t.k)
                         .font(.system(size: 8, design: .monospaced))
                         .foregroundColor(Color.gray.opacity(0.65))

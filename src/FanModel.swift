@@ -188,6 +188,7 @@ final class FanModel: ObservableObject {
         static let netUnit       = "ifeng.netUnit"
         static let menuShowTemp  = "ifeng.menuShowTemp"
         static let fanUnit       = "ifeng.fanUnit"
+        static let controlSensor = "ifeng.controlSensor"
         static let smoothEnabled = "ifeng.smoothEnabled"
         static let smoothRate    = "ifeng.smoothRate"
     }
@@ -204,6 +205,7 @@ final class FanModel: ObservableObject {
         if let raw = d.string(forKey: Keys.netUnit), let u = NetUnit(rawValue: raw) { netUnit = u }
         if d.object(forKey: Keys.menuShowTemp) != nil { menuShowTemp = d.bool(forKey: Keys.menuShowTemp) }
         if let raw = d.string(forKey: Keys.fanUnit), let u = FanUnit(rawValue: raw) { fanUnit = u }
+        if let raw = d.string(forKey: Keys.controlSensor), !raw.isEmpty { controlSensorKey = raw }
         if d.object(forKey: Keys.smoothEnabled) != nil { smoothEnabled = d.bool(forKey: Keys.smoothEnabled) }
         if d.object(forKey: Keys.smoothRate) != nil { smoothRate = d.double(forKey: Keys.smoothRate) }
         loadCurve()
@@ -249,13 +251,25 @@ final class FanModel: ObservableObject {
         temps.map { $0.v }.filter { $0 > 1 && $0 < 120 }.max()
     }
 
-    /// 控制用温度：优先「CPU 附近」(TC0P)。
+    /// 用户选定的控制传感器（SMC 键名），默认 TC0P
+    @Published var controlSensorKey: String = "TC0P" {
+        didSet { defaults.set(controlSensorKey, forKey: Keys.controlSensor) }
+    }
+
+    /// 选定传感器的中文名（面板标题用）
+    var controlSensorName: String {
+        temps.first(where: { $0.k == controlSensorKey })?.n ?? "CPU 附近"
+    }
+
+    /// 控制用温度：优先取用户选定的传感器；它读不到时回退 TC0P，再回退最高温。
     ///
-    /// 为什么不用 maxTemp：本机 TC0E / TC0F 常年 82–87 ℃，即使空闲也很高，
+    /// 为什么默认不用 maxTemp：本机 TC0E / TC0F 常年 82–87 ℃，即使空闲也很高，
     /// 用它做控制量会让目标温度 66 ℃ 永远超差 —— 风扇一直全速，恒温模式形同失效。
-    /// TC0P 与用户设定目标温度的语义一致，Macs Fan Control 也以它为准。
     /// maxTemp 仍保留，用于过热强制全速这类安全判断。
     var controlTemp: Double? {
+        if let p = temps.first(where: { $0.k == controlSensorKey }), p.v > 1, p.v < 120 {
+            return p.v
+        }
         if let p = temps.first(where: { $0.k == "TC0P" }), p.v > 1, p.v < 120 {
             return p.v
         }
