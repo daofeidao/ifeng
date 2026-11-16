@@ -108,11 +108,11 @@ rm -f "$ZIP"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 echo "    OK -> $ZIP ($(du -h "$ZIP" | awk '{print $1}'))"
 
-# 桌面 app 文件夹投放（用户约定：成品直接放 ~/Desktop/app/）
+# 投放（用户约定：成品直接放 ~/Desktop/myapp/）
 DELIVER_USER="${SUDO_USER:-$USER}"
 DELIVER_HOME="$(eval echo "~${DELIVER_USER}")"
 if [ -d "$DELIVER_HOME/Desktop" ]; then
-    DESK_DIR="$DELIVER_HOME/Desktop/app"
+    DESK_DIR="$DELIVER_HOME/Desktop/myapp"
     mkdir -p "$DESK_DIR"
     rm -rf "$DESK_DIR/风扇控制.app"
     ditto "$APP" "$DESK_DIR/风扇控制.app"
@@ -126,7 +126,7 @@ echo ""
 echo "构建完成。产物："
 echo "    $(pwd)/$APP"
 echo "    $(pwd)/$ZIP"
-echo "    桌面副本：$DELIVER_HOME/Desktop/app/风扇控制.app"
+echo "    桌面副本：$DELIVER_HOME/Desktop/myapp/风扇控制.app"
 echo ""
 echo "本机安装（写入 /usr/local/bin，需要管理员密码）："
 echo "    sudo bash install.sh"
