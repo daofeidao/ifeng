@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 APP="build/风扇控制.app"
 BIN="iFeng"
 ARCH="$(uname -m)"
-VERSION="1.2.0"
+VERSION="1.2.1"
 UNIVERSAL="${UNIVERSAL:-0}"
 SOURCES="src/App.swift src/Fanctl.swift src/FanModel.swift src/ContentView.swift src/Updater.swift src/NetMonitor.swift"
 
@@ -108,11 +108,26 @@ rm -f "$ZIP"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 echo "    OK -> $ZIP ($(du -h "$ZIP" | awk '{print $1}'))"
 
+# 桌面 app 文件夹投放（用户约定：成品直接放 ~/Desktop/app/）
+DELIVER_USER="${SUDO_USER:-$USER}"
+DELIVER_HOME="$(eval echo "~${DELIVER_USER}")"
+if [ -d "$DELIVER_HOME/Desktop" ]; then
+    DESK_DIR="$DELIVER_HOME/Desktop/app"
+    mkdir -p "$DESK_DIR"
+    rm -rf "$DESK_DIR/风扇控制.app"
+    ditto "$APP" "$DESK_DIR/风扇控制.app"
+    xattr -cr "$DESK_DIR/风扇控制.app" 2>/dev/null || true
+    echo "==> 已投放到桌面：$DESK_DIR/风扇控制.app"
+else
+    echo "==> 跳过桌面投放（未找到 $DELIVER_HOME/Desktop）"
+fi
+
 echo ""
 echo "构建完成。产物："
 echo "    $(pwd)/$APP"
 echo "    $(pwd)/$ZIP"
+echo "    桌面副本：$DELIVER_HOME/Desktop/app/风扇控制.app"
 echo ""
 echo "本机安装（写入 /usr/local/bin，需要管理员密码）："
 echo "    sudo bash install.sh"
-echo "也可以不装脚本：把 App 拖进「应用程序」，打开后在「设置」里点「一键启用风扇写入」。"
+echo "也可以不装脚本：双击桌面副本，打开后在「设置」里点「一键启用风扇写入」。"

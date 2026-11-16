@@ -35,13 +35,14 @@ xattr -dr com.apple.quarantine "/Applications/$APP_NAME" 2>/dev/null || true
 codesign --force --deep --sign - "/Applications/$APP_NAME" 2>/dev/null || true
 ls -ld "/Applications/$APP_NAME"
 
-echo "==> [4/5] 删除桌面旧副本"
-rm -rf "/Users/$OWNER_USER/Desktop/$APP_NAME"
-if [ -e "/Users/$OWNER_USER/Desktop/$APP_NAME" ]; then
-    echo "    删除失败"
-else
-    echo "    已删除"
-fi
+echo "==> [4/5] 刷新桌面副本（~/Desktop/app）"
+DESK_DIR="/Users/$OWNER_USER/Desktop/app"
+mkdir -p "$DESK_DIR"
+rm -rf "$DESK_DIR/$APP_NAME"
+ditto "/Applications/$APP_NAME" "$DESK_DIR/$APP_NAME"
+chown -R "$OWNER_USER":staff "$DESK_DIR/$APP_NAME" 2>/dev/null || true
+xattr -cr "$DESK_DIR/$APP_NAME" 2>/dev/null || true
+echo "    $DESK_DIR/$APP_NAME"
 
 echo "==> [5/5] 自检"
 /usr/local/bin/fanctl diag || true

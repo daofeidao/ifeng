@@ -303,11 +303,18 @@ final class Updater: ObservableObject {
             return
         }
 
+        // 用户约定：桌面 app 文件夹也保留一份，更新后一并刷新
+        let home = NSHomeDirectory()
+        let deskDir = home + "/Desktop/app"
+        let deskApp = deskDir + "/风扇控制.app"
+
         let script = """
         #!/bin/bash
         PID=\(getpid())
         NEW='\(newApp)'
         DST='\(dst)'
+        DESK_DIR='\(deskDir)'
+        DESK_APP='\(deskApp)'
         while /bin/kill -0 "$PID" 2>/dev/null; do /bin/sleep 0.3; done
         /bin/sleep 0.6
         /bin/rm -rf "$DST.ifeng-old"
@@ -315,6 +322,12 @@ final class Updater: ObservableObject {
         /usr/bin/ditto "$NEW" "$DST"
         /usr/bin/xattr -cr "$DST" 2>/dev/null
         /bin/rm -rf "$DST.ifeng-old"
+        if [ -d "$(/usr/bin/dirname "$DESK_DIR")" ]; then
+            /bin/mkdir -p "$DESK_DIR"
+            /bin/rm -rf "$DESK_APP"
+            /usr/bin/ditto "$DST" "$DESK_APP"
+            /usr/bin/xattr -cr "$DESK_APP" 2>/dev/null
+        fi
         /usr/bin/open "$DST"
         """
 

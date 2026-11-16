@@ -34,12 +34,12 @@ if [ ! -d "$BUILD_DIR/$APP_NAME" ]; then
     exit 1
 fi
 
-echo "==> [1/4] 安装 fanctl 到 /usr/local/bin（setuid root）"
+echo "==> [1/5] 安装 fanctl 到 /usr/local/bin（setuid root）"
 install -d -o root -g wheel -m 755 /usr/local/bin
 install -o root -g wheel -m 4755 "$BUILD_DIR/fanctl" /usr/local/bin/fanctl
 ls -l /usr/local/bin/fanctl
 
-echo "==> [2/4] 安装 $APP_NAME 到 /Applications"
+echo "==> [2/5] 安装 $APP_NAME 到 /Applications"
 rm -rf "/Applications/$APP_NAME"
 cp -R "$BUILD_DIR/$APP_NAME" "/Applications/$APP_NAME"
 xattr -dr com.apple.quarantine "/Applications/$APP_NAME" 2>/dev/null || true
@@ -48,12 +48,30 @@ if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
 fi
 codesign --force --deep --sign - "/Applications/$APP_NAME" 2>/dev/null || true
 
-echo "==> [3/4] 自检"
+echo "==> [3/5] 自检"
 echo ""
 /usr/local/bin/fanctl diag || true
 echo ""
 
-echo "==> [4/4] 启动"
+echo "==> [4/5] 刷新桌面副本（~/Desktop/app）"
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
+    USER_HOME="$(dscl . -read /Users/"$CONSOLE_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+    if [ -n "${USER_HOME:-}" ] && [ -d "$USER_HOME/Desktop" ]; then
+        DESK_DIR="$USER_HOME/Desktop/app"
+        mkdir -p "$DESK_DIR"
+        rm -rf "$DESK_DIR/$APP_NAME"
+        ditto "/Applications/$APP_NAME" "$DESK_DIR/$APP_NAME"
+        chown -R "$CONSOLE_USER":staff "$DESK_DIR/$APP_NAME" 2>/dev/null || true
+        xattr -cr "$DESK_DIR/$APP_NAME" 2>/dev/null || true
+        echo "    $DESK_DIR/$APP_NAME"
+    else
+        echo "    未找到桌面目录，跳过"
+    fi
+else
+    echo "    非登录会话，跳过"
+fi
+
+echo "==> [5/5] 启动"
 CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || echo "")"
 if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
     sudo -u "$CONSOLE_USER" open -a "/Applications/$APP_NAME"
