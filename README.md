@@ -153,16 +153,19 @@ fanctl watch              # 终端实时刷新（Ctrl-C 退出）
 ## 七、目录结构
 
 ```
-fanctrl/
-├── build.sh              构建（clang + swiftc）
-├── install.sh            安装（setuid helper + /Applications）
-├── uninstall.sh          卸载
-├── Info.plist            CFBundleName=风扇控制, Executable=iFeng, LSUIElement=1
+ifeng/
+├── .github/workflows/
+│   └── build.yml          CI：macOS runner 出通用二进制 + 打 tag 自动发布 Release
+├── build.sh               构建（clang + swiftc，支持 UNIVERSAL=1）
+├── install.sh             安装（setuid helper + /Applications）
+├── uninstall.sh           卸载
+├── Info.plist             CFBundleName=风扇控制, Executable=iFeng, LSUIElement=1
 ├── src/
-│   ├── fanctl.c          SMC 读写 + 命令行
-│   ├── App.swift         菜单栏入口 + 退出交还控制
-│   ├── Fanctl.swift      fanctl 调用层 / LaunchAgent
-│   ├── FanModel.swift    模式状态机、恒温闭环、曲线插值、节流
-│   └── ContentView.swift 三页面板（控制 / 曲线 / 设置）
+│   ├── fanctl.c           SMC 读写 + 命令行（构建时嵌入 App/Resources）
+│   ├── App.swift          菜单栏入口 + 退出交还控制
+│   ├── Fanctl.swift       fanctl 调用层 / 一键授权 / LaunchAgent
+│   ├── FanModel.swift     模式状态机、恒温闭环、曲线插值、平滑过渡
+│   ├── ContentView.swift  三页面板（控制 / 曲线 / 设置）
+│   └── Updater.swift      GitHub Release 检查、后台下载、自替换重启
 └── README.md
 ```
