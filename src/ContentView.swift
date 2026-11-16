@@ -626,8 +626,6 @@ struct ContentView: View {
                 Divider()
                 statusBarSection
                 Divider()
-                smoothSection
-                Divider()
                 autostartRow
                 settingsFooter
             }
@@ -649,45 +647,36 @@ struct ContentView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer()
-                Button(updater.checking ? "检查中…" : "检查更新") {
-                    updater.check()
-                }
-                .controlSize(.mini)
-                .disabled(updater.checking || updater.downloading)
             }
 
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Text("作者：\(AppInfo.author)")
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
                 Button {
                     NSWorkspace.shared.open(AppInfo.repoURL)
                 } label: {
-                    HStack(spacing: 2) {
-                        Image(systemName: "safari")
-                            .font(.system(size: 9))
-                        Text("GitHub")
-                    }
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.accentColor)
-                    .underline()
+                    Text("GitHub")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.accentColor)
+                        .underline()
                 }
                 .buttonStyle(.plain)
                 .help("在浏览器中打开项目主页")
                 Spacer()
-            }
-
-            // 自动更新开关放在「检查更新」按钮正下方，紧凑省空间
-            HStack(spacing: 6) {
-                Spacer()
-                Text("自动后台更新")
-                    .font(.system(size: 10))
+                Text("自动更新")
+                    .font(.system(size: 9))
                     .foregroundColor(.secondary)
                 Toggle("", isOn: Binding(get: { updater.autoUpdate },
                                         set: { updater.autoUpdate = $0 }))
                     .toggleStyle(.switch)
                     .controlSize(.mini)
                     .labelsHidden()
+                Button(updater.checking ? "检查中…" : "检查更新") {
+                    updater.check()
+                }
+                .controlSize(.mini)
+                .disabled(updater.checking || updater.downloading)
             }
 
             if let err = updater.lastError {
@@ -719,15 +708,32 @@ struct ContentView: View {
             Text("状态栏显示")
                 .font(.system(size: 10, weight: .medium))
 
-            // 三个开关并列一行，节省面板高度
-            HStack(spacing: 14) {
+            // 四个开关并列一行，节省面板高度
+            HStack(spacing: 12) {
                 statusToggle("网速", Binding(get: { model.menuShowNet },
                                             set: { model.menuShowNet = $0 }))
                 statusToggle("温度", Binding(get: { model.menuShowTemp },
                                             set: { model.menuShowTemp = $0 }))
                 statusToggle("转速", Binding(get: { model.menuShowRPM },
                                             set: { model.menuShowRPM = $0 }))
+                statusToggle("平滑", Binding(get: { model.smoothEnabled },
+                                            set: { model.smoothEnabled = $0 }))
                 Spacer()
+            }
+
+            if model.smoothEnabled {
+                HStack(spacing: 6) {
+                    Text("速率")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                    Slider(value: Binding(get: { model.smoothRate },
+                                          set: { model.smoothRate = $0 }),
+                           in: 100...1500, step: 50)
+                    Text("\(Int(model.smoothRate))")
+                        .font(.system(size: 9, weight: .medium))
+                        .monospacedDigit()
+                        .frame(width: 34, alignment: .trailing)
+                }
             }
 
             unitRow("网速单位", selection: Binding(get: { model.netUnit },
@@ -767,53 +773,6 @@ struct ContentView: View {
             .controlSize(.mini)
             .labelsHidden()
             Spacer()
-        }
-    }
-
-    // MARK: - 平滑过渡
-
-    private var smoothSection: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Toggle(isOn: Binding(get: { model.smoothEnabled },
-                                 set: { model.smoothEnabled = $0 })) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("转速平滑过渡").font(.system(size: 11))
-                    Text("目标转速变化时逐步升降，避免突然变速")
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-
-            if model.smoothEnabled {
-                HStack {
-                    Text("过渡速率")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text("\(Int(model.smoothRate)) RPM/秒")
-                        .font(.system(size: 10, weight: .medium))
-                        .monospacedDigit()
-                }
-                Slider(value: Binding(get: { model.smoothRate },
-                                      set: { model.smoothRate = $0 }),
-                       in: 100...1500, step: 50)
-
-                HStack(spacing: 6) {
-                    Button("慢 250") { model.smoothRate = 250 }
-                        .controlSize(.mini)
-                    Button("标准 500") { model.smoothRate = 500 }
-                        .controlSize(.mini)
-                    Button("快 1000") { model.smoothRate = 1000 }
-                        .controlSize(.mini)
-                    Spacer()
-                }
-
-                Text(model.smoothTimeHint)
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
-            }
         }
     }
 
